@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MODO – Agent Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<style>
+:root{--primary:#1d4ed8;--primary-dark:#1e3a8a;--primary-light:#3b82f6;--success:#16a34a;--warning:#d97706;--danger:#dc2626;--purple:#7c3aed;--gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-500:#6b7280;--gray-700:#374151;--gray-900:#111827;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--gray-50);color:var(--gray-900);min-height:100vh;}
+.page{display:none;}.page.active{display:flex;}
+
+/* LOGIN */
+#page-login{min-height:100vh;background:linear-gradient(135deg,#1e3a8a,#1d4ed8,#3b82f6);flex-direction:column;align-items:center;justify-content:center;padding:24px;}
+.login-box{background:#fff;border-radius:20px;padding:44px 40px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.22);}
+.login-box .icon{font-size:52px;margin-bottom:14px;}
+.login-box h1{font-size:24px;font-weight:800;color:var(--primary-dark);margin-bottom:6px;}
+.login-box .sub{color:var(--gray-500);font-size:14px;margin-bottom:8px;}
+.login-box .portal-tag{display:inline-block;background:#eff6ff;color:var(--primary);border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:28px;}
+.btn-ms{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:14px 20px;font-size:15px;font-weight:600;cursor:pointer;width:100%;transition:background .2s;}
+.btn-ms:hover{background:var(--primary-dark);}
+.btn-ms svg{width:20px;height:20px;flex-shrink:0;}
+.login-note{margin-top:20px;color:rgba(255,255,255,.6);font-size:12px;text-align:center;}
+
+/* LOADING */
+#page-loading{min-height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+.spinner{width:44px;height:44px;border:4px solid var(--gray-200);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* APP */
+#page-app{flex-direction:column;min-height:100vh;}
+header{background:var(--primary-dark);color:#fff;padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+header .logo{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.header-right{display:flex;align-items:center;gap:10px;}
+.user-pill{background:rgba(255,255,255,.14);border-radius:20px;padding:5px 14px;font-size:13px;}
+.btn-out{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;}
+.btn-out:hover{background:rgba(255,255,255,.2);}
+main{flex:1;max-width:900px;width:100%;margin:0 auto;padding:28px 20px;}
+
+/* TABS */
+.tab-bar{display:flex;gap:4px;background:var(--gray-100);border-radius:10px;padding:4px;margin-bottom:24px;width:fit-content;}
+.tab-btn{border:none;background:none;padding:9px 22px;border-radius:8px;font-size:14px;font-weight:600;color:var(--gray-500);cursor:pointer;transition:all .2s;white-space:nowrap;}
+.tab-btn.active{background:#fff;color:var(--primary);box-shadow:0 1px 4px rgba(0,0,0,.1);}
+.tab-pane{display:none;}.tab-pane.active{display:block;}
+
+/* CARDS */
+.card{background:#fff;border-radius:14px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,.07);border:1px solid var(--gray-200);margin-bottom:20px;}
+.card:last-child{margin-bottom:0;}
+.card-title{font-size:16px;font-weight:700;color:var(--gray-900);margin-bottom:4px;}
+.card-sub{font-size:13px;color:var(--gray-500);margin-bottom:20px;}
+
+/* SHIFT HERO */
+.shift-hero{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;}
+@media(max-width:580px){.shift-hero{grid-template-columns:1fr;}}
+.shift-info .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gray-500);margin-bottom:6px;}
+.shift-info .date{font-size:14px;color:var(--gray-700);margin-bottom:4px;}
+.shift-time{font-size:34px;font-weight:800;color:var(--primary);margin:6px 0;}
+.shift-off{font-size:34px;font-weight:800;color:var(--gray-400);margin:6px 0;}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700;margin-top:6px;}
+.chip::before{content:'●';font-size:7px;}
+.chip.on-time{background:#dcfce7;color:var(--success);}
+.chip.late{background:#fef3c7;color:var(--warning);}
+.chip.off{background:var(--gray-100);color:var(--gray-500);}
+.chip.pending{background:#eff6ff;color:var(--primary);}
+.chip.done{background:#dcfce7;color:var(--success);}
+.chip.pto{background:#f3e8ff;color:var(--purple);}
+.action-box{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;}
+.btn-checkin{background:var(--success);color:#fff;border:none;border-radius:12px;padding:18px;font-size:17px;font-weight:700;cursor:pointer;width:100%;transition:opacity .2s;margin-bottom:10px;}
+.btn-checkin:hover{opacity:.88;}
+.btn-checkin:disabled{background:var(--gray-300);cursor:default;}
+.btn-checkout{background:var(--warning);color:#fff;border:none;border-radius:12px;padding:18px;font-size:17px;font-weight:700;cursor:pointer;width:100%;transition:opacity .2s;}
+.btn-checkout:hover{opacity:.88;}
+.btn-checkout:disabled{background:var(--gray-300);cursor:default;}
+.time-row{display:flex;gap:12px;margin-top:14px;width:100%;}
+.time-box{flex:1;background:var(--gray-50);border-radius:10px;padding:12px;border:1px solid var(--gray-200);text-align:center;}
+.time-box .tl{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:.5px;}
+.time-box .tv{font-size:17px;font-weight:800;color:var(--gray-900);margin-top:4px;}
+
+/* WEEK STRIP */
+.week-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:4px;}
+.day-cell{border-radius:8px;padding:8px 4px;text-align:center;background:var(--gray-50);border:1px solid var(--gray-200);}
+.day-cell.today{background:#eff6ff;border-color:var(--primary-light);}
+.day-cell.off-day{opacity:.5;}
+.day-cell .dn{font-size:10px;font-weight:700;color:var(--gray-500);text-transform:uppercase;}
+.day-cell .dd{font-size:13px;font-weight:800;margin:2px 0;}
+.day-cell .ds{font-size:9px;color:var(--primary);font-weight:700;line-height:1.3;}
+.day-cell.off-day .ds{color:var(--gray-500);}
+
+/* PTO FORM */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:580px){.form-grid{grid-template-columns:1fr;}}
+.fg{display:flex;flex-direction:column;gap:5px;}.fg.full{grid-column:1/-1;}
+.fg label{font-size:13px;font-weight:600;color:var(--gray-700);}
+.fg input,.fg select,.fg textarea{border:1px solid var(--gray-300);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--gray-900);background:#fff;outline:none;font-family:inherit;}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(29,78,216,.08);}
+.fg textarea{resize:vertical;min-height:80px;}
+.days-hint{color:var(--primary);font-weight:700;font-size:12px;margin-top:2px;}
+.btn-submit{background:var(--primary);color:#fff;border:none;border-radius:10px;padding:13px 32px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;transition:background .2s;}
+.btn-submit:hover{background:var(--primary-dark);}
+.btn-submit:disabled{background:var(--gray-300);cursor:default;}
+
+/* PTO STATUS TABLE */
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{background:var(--gray-50);border-bottom:2px solid var(--gray-200);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-500);white-space:nowrap;}
+tbody tr{border-bottom:1px solid var(--gray-100);}
+tbody tr:hover{background:var(--gray-50);}
+tbody td{padding:11px 12px;color:var(--gray-700);}
+.badge{display:inline-block;border-radius:10px;padding:3px 10px;font-size:11px;font-weight:700;}
+.badge.pending{background:#eff6ff;color:var(--primary);}
+.badge.approved{background:#dcfce7;color:var(--success);}
+.badge.declined{background:#fee2e2;color:var(--danger);}
+.empty{text-align:center;padding:40px;color:var(--gray-500);font-size:14px;}
+.table-wrap{overflow-x:auto;}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--gray-900);color:#fff;border-radius:10px;padding:13px 18px;font-size:14px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.18);z-index:9999;opacity:0;transform:translateY(6px);transition:all .3s;pointer-events:none;max-width:320px;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.ok{background:var(--success);}.toast.err{background:var(--danger);}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="page-login" class="page active">
+  <div class="login-box">
+    <div class="icon">🧑‍💼</div>
+    <h1>MODO Attendance</h1>
+    <p class="sub">Agent Portal</p>
+    <div class="portal-tag">Check-In &amp; PTO Application</div>
+    <button class="btn-ms" onclick="signIn()">
+      <svg viewBox="0 0 21 21" fill="none"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+      Sign in with Microsoft
+    </button>
+  </div>
+  <p class="login-note">For leaders &amp; managers, use the Leader Dashboard instead.</p>
+</div>
+
+<!-- LOADING -->
+<div id="page-loading" class="page">
+  <div class="spinner"></div>
+  <p style="color:var(--gray-500);font-size:14px;" id="loading-msg">Loading…</p>
+</div>
+
+<!-- APP -->
+<div id="page-app" class="page">
+  <header>
+    <div class="logo">📋 MODO Attendance — Agent Portal</div>
+    <div class="header-right">
+      <span class="user-pill" id="hdr-name">—</span>
+      <button class="btn-out" onclick="signOut()">Sign Out</button>
+    </div>
+  </header>
+  <main>
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="goTab('checkin')" id="tbtn-checkin">⏱ Check-In / Out</button>
+      <button class="tab-btn" onclick="goTab('pto')" id="tbtn-pto">🌴 Apply PTO</button>
+      <button class="tab-btn" onclick="goTab('status')" id="tbtn-status">📋 PTO Status</button>
+    </div>
+
+    <!-- CHECK-IN / OUT -->
+    <div id="tab-checkin" class="tab-pane active">
+      <div class="shift-hero">
+        <div class="card shift-info" style="margin-bottom:0;">
+          <div class="lbl">Today's Shift</div>
+          <div class="date" id="ci-date"></div>
+          <div id="ci-shift" class="shift-time">—</div>
+          <div id="ci-chip"></div>
+        </div>
+        <div class="card action-box" style="margin-bottom:0;">
+          <div id="ci-action" style="width:100%;"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="lbl" style="margin-bottom:12px;">This Week's Schedule</div>
+        <div class="week-strip" id="week-strip"></div>
+      </div>
+    </div>
+
+    <!-- APPLY PTO -->
+    <div id="tab-pto" class="tab-pane">
+      <div class="card">
+        <div class="card-title">🌴 PTO Application</div>
+        <div class="card-sub">All PTO requests are Vacation Leave. Dates available from today up to <span id="pto-max-label"></span>.</div>
+        <div class="form-grid">
+          <div class="fg">
+            <label>PTO Type</label>
+            <select id="pto-type" onchange="onPTOTypeChange()">
+              <option value="Whole Day">Whole Day</option>
+              <option value="Half Day">Half Day</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>MNL Shift Time</label>
+            <select id="pto-shift">
+              <option value="">— Select shift —</option>
+              <option>00:00 - 09:00</option><option>01:00 - 10:00</option>
+              <option>02:00 - 11:00</option><option>03:00 - 12:00</option>
+              <option>04:00 - 13:00</option><option>05:00 - 14:00</option>
+              <option>06:00 - 15:00</option><option>07:00 - 16:00</option>
+              <option>08:00 - 17:00</option><option>10:00 - 19:00</option>
+              <option>11:00 - 20:00</option><option>12:00 - 21:00</option>
+              <option>13:00 - 22:00</option><option>17:00 - 02:00</option>
+              <option>18:00 - 03:00</option><option>18:30 - 03:30</option>
+              <option>19:00 - 04:00</option><option>19:30 - 04:30</option>
+              <option>20:00 - 05:00</option><option>21:00 - 06:00</option>
+              <option>22:00 - 07:00</option><option>23:00 - 08:00</option>
+            </select>
+          </div>
+          <div class="fg"><label>Start Date</label><input type="date" id="pto-start" onchange="calcDays()"/></div>
+          <div class="fg" id="fg-end-date"><label>End Date</label><input type="date" id="pto-end" onchange="calcDays()"/></div>
+          <div class="fg">
+            <label>Total Days</label>
+            <input type="text" id="pto-days" readonly placeholder="Auto-calculated"/>
+            <span class="days-hint" id="pto-days-hint"></span>
+          </div>
+          <div class="fg full"><label>Reason / Notes</label><textarea id="pto-reason" placeholder="Briefly describe the reason for your leave…"></textarea></div>
+        </div>
+        <div style="margin-top:16px;"><button class="btn-submit" id="btn-submit" onclick="submitPTO()">Submit PTO Request</button></div>
+      </div>
+    </div>
+
+    <!-- PTO STATUS -->
+    <div id="tab-status" class="tab-pane">
+      <div class="card">
+        <div class="card-title">📋 My PTO Applications</div>
+        <div class="card-sub">History of all your PTO requests and their current status.</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Leave Type</th><th>Start</th><th>End</th><th>Days</th>
+              <th>Reason</th><th>Submitted</th><th>Status</th><th>Reviewed By</th><th>Comments</th>
+            </tr></thead>
+            <tbody id="pto-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CONFIG={
+  clientId:'7dfd41b7-1960-49c6-a701-b021a28550bb',
+  tenantId:'3acfc3b8-ea64-4ce1-8910-f91e9c67a3fc',
+  redirectUri:'https://attendancedashboard.github.io/modo-attendance-dashboard/',
+  spHostname:'conduetcx.sharepoint.com',
+  spSitePath:'/sites/WFMTeam',
+  excelPath:'MODO Files/MODO_Attendance_Schedule_v2.xlsx',
+};
+const SCOPES=['User.Read','Files.ReadWrite.All','Sites.ReadWrite.All'];
+const PTO_SHEET='PTO_Applications';
+const PTO_HDRS=['UniqueKey','Email','FullName','LineManager','Cluster','RequestedOn','StartDate','EndDate','TotalDays','PTOType','Reason','Status','ReviewedBy','ReviewedOn','Comments'];
+const CI_HDRS=['UniqueKey','Email','FullName','Date','CheckInTime','CheckOutTime','ShiftStart','ShiftEnd','ScheduleStatus','AttendanceStatus','LateMinutes','IsAutoCheckout','LineManager','Cluster','Notes','SubmittedBy'];
+
+let msalInst=null,currentUser=null,schedData=[],ciData=[],ptoData=[],dateCols=[],driveId=null,fileId=null;
+
+function getMsal(){
+  if(msalInst)return msalInst;
+  msalInst=new msal.PublicClientApplication({auth:{clientId:CONFIG.clientId,authority:'https://login.microsoftonline.com/'+CONFIG.tenantId,redirectUri:CONFIG.redirectUri},cache:{cacheLocation:'sessionStorage'}});
+  return msalInst;
+}
+async function signIn(){
+  try{const i=getMsal();await i.initialize();await i.loginRedirect({scopes:SCOPES});}
+  catch(e){toast('Sign-in failed: '+e.message,'err');}
+}
+function signOut(){getMsal().logoutRedirect({postLogoutRedirectUri:CONFIG.redirectUri});}
+async function getToken(){
+  const i=getMsal();const a=i.getActiveAccount()||i.getAllAccounts()[0];
+  if(!a)throw new Error('Not signed in');
+  try{return(await i.acquireTokenSilent({scopes:SCOPES,account:a})).accessToken;}
+  catch(e){await i.acquireTokenRedirect({scopes:SCOPES,account:a});return null;}
+}
+async function api(path,method='GET',body=null){
+  const t=await getToken();
+  const r=await fetch('https://graph.microsoft.com/v1.0'+path,{method,headers:{'Authorization':'Bearer '+t,'Content-Type':'application/json'},body:body?JSON.stringify(body):null});
+  if(!r.ok)throw new Error('Graph '+r.status+': '+(await r.text()));
+  return method==='GET'?r.json():r;
+}
+async function ensureIds(){
+  if(fileId)return;
+  loading('Connecting to SharePoint…');
+  // Get site
+  const site=await api('/sites/'+CONFIG.spHostname+':'+CONFIG.spSitePath);
+  const siteId=site.id;
+  const fileName=CONFIG.excelPath.split('/').pop();
+  const folderName=CONFIG.excelPath.split('/').slice(0,-1).join('/');
+
+  // Try default drive first, then search all drives as fallback
+  const tryPath=async(drv)=>{
+    try{
+      const p=folderName?encodeURIComponent(folderName)+'/'+encodeURIComponent(fileName):encodeURIComponent(fileName);
+      const f=await api('/drives/'+drv+'/root:/'+p);
+      driveId=drv; fileId=f.id; return true;
+    }catch(e){ return false; }
+  };
+
+  // Method 1: default drive
+  const defDrive=await api('/sites/'+siteId+'/drive');
+  if(await tryPath(defDrive.id)) return;
+
+  // Method 2: search all drives in the site
+  loading('Searching document libraries…');
+  const drives=await api('/sites/'+siteId+'/drives');
+  for(const d of (drives.value||[])){
+    if(await tryPath(d.id)) return;
+  }
+
+  // Method 3: Graph search
+  loading('Searching for file…');
+  const search=await api('/sites/'+siteId+"/drive/root/search(q='"+encodeURIComponent(fileName)+"')");
+  const found=(search.value||[]).find(f=>f.name===fileName);
+  if(found){ driveId=found.parentReference.driveId; fileId=found.id; return; }
+
+  throw new Error('Cannot find '+fileName+' in SharePoint. Check the file name and folder.');
+}
+function wb(s){return'/drives/'+driveId+'/items/'+fileId+'/workbook'+s;}
+async function readSheet(name){
+  await ensureIds();
+  try{
+    const r=await api(wb('/worksheets/'+encodeURIComponent(name)+'/usedRange(valuesOnly=true)'));
+    if(!r.values||r.values.length<2)return[];
+    const[h,...rows]=r.values;
+    return rows.map(row=>Object.fromEntries(h.map((k,i)=>[k,row[i]??''])));
+  }catch(e){if(e.message.includes('404')||e.message.includes('ItemNotFound'))return[];throw e;}
+}
+async function ensureSheet(name,hdrs){
+  await ensureIds();
+  try{await api(wb('/worksheets/'+encodeURIComponent(name)));}
+  catch(e){
+    if(e.message.includes('404')||e.message.includes('ItemNotFound')){
+      await api(wb('/worksheets/add'),'POST',{name});
+      await api(wb('/worksheets/'+encodeURIComponent(name)+'/range(address=\'A1:'+col(hdrs.length)+'1\')'),'PATCH',{values:[hdrs]});
+    }
+  }
+}
+async function appendRow(sheet,hdrs,vals){
+  await ensureIds();
+  const used=await api(wb('/worksheets/'+encodeURIComponent(sheet)+'/usedRange(valuesOnly=true)'));
+  const next=(used.values?used.values.length:1)+1;
+  await api(wb('/worksheets/'+encodeURIComponent(sheet)+'/range(address=\'A'+next+':'+col(hdrs.length)+next+'\')'),'PATCH',{values:[vals]});
+}
+async function patchCell(sheet,row,c,val){
+  await ensureIds();
+  const cl=col(c);
+  await api(wb('/worksheets/'+encodeURIComponent(sheet)+'/range(address=\''+cl+row+':'+cl+row+'\')'),'PATCH',{values:[[val]]});
+}
+function col(n){let s='';while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}
+
+function showPage(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+n).classList.add('active');}
+function loading(msg){document.getElementById('loading-msg').textContent=msg;showPage('loading');}
+function toast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(type||'');setTimeout(()=>t.classList.remove('show'),3500);}
+function todayStr(){const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');}
+function fmtTime(d){return d.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',hour12:true});}
+function fmtDate(d){return d.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'});}
+// Normalize any date value from Excel → YYYY-MM-DD
+function normDate(v){
+  if(!v&&v!==0)return'';
+  if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');}
+  const s=String(v).trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+  if(/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)){const[m,d,y]=s.split('/');return y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0');}
+  return s;
+}
+function fmtShort(v){const s=normDate(v);if(!s)return'—';const d=new Date(s+'T00:00:00');return isNaN(d)?String(v):d.toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'});}
+function todayCol(){const n=new Date();return n.getDate()+'-'+n.toLocaleString('en-US',{month:'short'});}
+function parseShift(s){if(!s||s==='OFF'||s==='PTO')return null;const[a,b]=s.split(' - ').map(x=>x.trim());return{start:a,end:b};}
+function lateMins(ci,ss){const[ch,cm]=ci.split(':').map(Number);const[sh,sm]=ss.split(':').map(Number);return Math.max(0,(ch*60+cm)-(sh*60+sm));}
+function workDays(s,e){let n=0,d=new Date(s+'T00:00:00'),end=new Date(e+'T00:00:00');while(d<=end){const w=d.getDay();if(w&&w!==6)n++;d.setDate(d.getDate()+1);}return n;}
+function findCI(email,date){const k=(email+'_'+normDate(date)).toLowerCase();const i=ciData.findIndex(r=>(r.UniqueKey||'').toLowerCase()===k);return i===-1?null:{row:ciData[i],excelRow:i+2};}
+
+async function boot(){
+  loading('Loading your data…');
+  try{
+    const me=await api('/me');
+    const email=(me.mail||me.userPrincipalName||'').toLowerCase();
+    currentUser={email,name:me.displayName||email};
+    document.getElementById('hdr-name').textContent=currentUser.name;
+    loading('Loading schedule…');
+    const sh=await api('/me');// reuse connection
+    const schedRes=await readSheet('Schedule_Raw');
+    // parse headers from raw
+    await ensureIds();
+    const raw=await api(wb('/worksheets/Schedule_Raw/usedRange(valuesOnly=true)'));
+    if(raw.values&&raw.values.length>1){
+      const[h,...rows]=raw.values;
+      schedData=rows.map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]??''])));
+      dateCols=h.slice(6).map((l,i)=>({label:l,idx:i+6}));
+    }
+    loading('Loading attendance…');
+    const ciRaw=await readSheet('CheckIn_CheckOut');
+    ciData=ciRaw.map(r=>({...r,Date:normDate(r.Date)}));
+    loading('Loading PTO data…');
+    await ensureSheet(PTO_SHEET,PTO_HDRS);
+    const ptoRaw=await readSheet(PTO_SHEET);
+    ptoData=ptoRaw.map(r=>({...r,StartDate:normDate(r.StartDate),EndDate:normDate(r.EndDate),RequestedOn:normDate(r.RequestedOn)}));
+    showPage('app');
+    initPTODates();
+    renderCheckin();renderWeek();renderPTOStatus();
+  }catch(e){showPage('login');toast('Error: '+e.message,'err');console.error(e);}
+}
+
+function goTab(name){
+  document.querySelectorAll('.tab-pane').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('tbtn-'+name).classList.add('active');
+  if(name==='status')renderPTOStatus();
+}
+
+function renderCheckin(){
+  const label=todayCol(),today=todayStr();
+  document.getElementById('ci-date').textContent=fmtDate(new Date());
+  const myRow=schedData.find(r=>(r.Email||'').toLowerCase()===currentUser.email);
+  const shiftStr=myRow?(myRow[label]||'OFF'):'Not in schedule';
+  const shift=parseShift(shiftStr);
+  const shiftEl=document.getElementById('ci-shift');
+  shiftEl.className=shift?'shift-time':'shift-off';shiftEl.textContent=shiftStr;
+  const ci=findCI(currentUser.email,today);
+  const chipEl=document.getElementById('ci-chip');
+  if(!shift){chipEl.innerHTML='<span class="chip '+(shiftStr==='PTO'?'pto':'off')+'">'+(shiftStr==='PTO'?'PTO – Paid Time Off':'Rest Day')+'</span>';}
+  else if(ci){
+    const lm=parseInt(ci.row.LateMinutes||0);
+    if(ci.row.CheckOutTime)chipEl.innerHTML='<span class="chip done">Shift Completed</span>';
+    else chipEl.innerHTML='<span class="chip '+(lm>0?'late':'on-time')+'">'+(lm>0?'Late by '+lm+' min':'On Time')+'</span>';
+  }else chipEl.innerHTML='<span class="chip pending">Not Yet Checked In</span>';
+
+  const el=document.getElementById('ci-action');
+  if(!shift){
+    el.innerHTML='<div style="font-size:44px;margin-bottom:8px;">🏖️</div><p style="color:var(--gray-500);font-weight:600;">No shift today. Enjoy your day off!</p>';
+  }else if(!ci){
+    el.innerHTML='<p style="font-size:13px;color:var(--gray-500);margin-bottom:16px;">Scheduled: <strong>'+shiftStr+'</strong></p><button class="btn-checkin" onclick="doCheckin(\''+today+'\',\''+shift.start+'\',\''+shift.end+'\')">🟢 Check In Now</button>';
+  }else if(!ci.row.CheckOutTime){
+    el.innerHTML='<p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">Checked in at <strong>'+ci.row.CheckInTime+'</strong></p><button class="btn-checkout" onclick="doCheckout(\''+today+'\','+ci.excelRow+')">🔴 Check Out</button><div class="time-row"><div class="time-box"><div class="tl">Check-In</div><div class="tv">'+ci.row.CheckInTime+'</div></div><div class="time-box"><div class="tl">Check-Out</div><div class="tv">—</div></div></div>';
+  }else{
+    el.innerHTML='<div style="font-size:44px;margin-bottom:8px;">✅</div><p style="font-size:17px;font-weight:800;color:var(--success);">Shift Completed</p><div class="time-row"><div class="time-box"><div class="tl">Check-In</div><div class="tv">'+ci.row.CheckInTime+'</div></div><div class="time-box"><div class="tl">Check-Out</div><div class="tv">'+ci.row.CheckOutTime+'</div></div></div>';
+  }
+}
+
+function renderWeek(){
+  const strip=document.getElementById('week-strip');
+  const myRow=schedData.find(r=>(r.Email||'').toLowerCase()===currentUser.email);
+  if(!myRow){strip.innerHTML='<div style="color:var(--gray-500);grid-column:1/-1;">No schedule found.</div>';return;}
+  const todayLabel=todayCol();
+  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const monthMap={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+  strip.innerHTML=dateCols.map(c=>{
+    const v=myRow[c.label]||'OFF',isToday=c.label===todayLabel,isOff=v==='OFF'||v==='PTO';
+    const[dn,mon]=c.label.split('-');
+    const d=new Date(new Date().getFullYear(),monthMap[mon]??4,parseInt(dn));
+    return'<div class="day-cell'+(isToday?' today':'')+(isOff?' off-day':'')+'"><div class="dn">'+dayNames[d.getDay()]+'</div><div class="dd">'+dn+'</div><div class="ds">'+v+'</div></div>';
+  }).join('');
+}
+
+async function doCheckin(date,ss,se){
+  const btn=document.querySelector('.btn-checkin');if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  try{
+    const now=new Date(),ci=fmtTime(now);
+    const hh=String(now.getHours()).padStart(2,'0'),mm=String(now.getMinutes()).padStart(2,'0');
+    const lm=lateMins(hh+':'+mm,ss);
+    const myRow=schedData.find(r=>(r.Email||'').toLowerCase()===currentUser.email);
+    const obj={UniqueKey:currentUser.email+'_'+date,Email:currentUser.email,FullName:myRow?myRow['Full Name']:currentUser.name,
+      Date:date,CheckInTime:ci,CheckOutTime:'',ShiftStart:ss,ShiftEnd:se,ScheduleStatus:'Scheduled',
+      AttendanceStatus:lm>0?'Late':'On Time',LateMinutes:lm,IsAutoCheckout:false,
+      LineManager:myRow?myRow['Line Manager']:'',Cluster:myRow?myRow.Cluster:'',Notes:'',SubmittedBy:currentUser.email};
+    const vals=CI_HDRS.map(h=>obj[h]??'');
+    await appendRow('CheckIn_CheckOut',CI_HDRS,vals);
+    ciData.push(Object.fromEntries(CI_HDRS.map((h,i)=>[h,vals[i]])));
+    toast('✅ Checked in at '+ci,'ok');renderCheckin();
+  }catch(e){toast('Check-in failed: '+e.message,'err');}
+  finally{if(btn){btn.disabled=false;btn.textContent='🟢 Check In Now';}}
+}
+
+async function doCheckout(date,excelRow){
+  const btn=document.querySelector('.btn-checkout');if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  try{
+    const co=fmtTime(new Date());
+    await patchCell('CheckIn_CheckOut',excelRow,CI_HDRS.indexOf('CheckOutTime')+1,co);
+    const local=findCI(currentUser.email,date);if(local)local.row.CheckOutTime=co;
+    toast('✅ Checked out at '+co,'ok');renderCheckin();
+  }catch(e){toast('Check-out failed: '+e.message,'err');}
+  finally{if(btn){btn.disabled=false;btn.textContent='🔴 Check Out';}}
+}
+
+// ── PTO DATE LIMITS ─────────────────────────
+function getPTOMaxDate(){
+  const now=new Date();
+  // Last day of the month 2 months from now — use local date methods to avoid UTC timezone shift
+  const last=new Date(now.getFullYear(), now.getMonth()+3, 0);
+  const y=last.getFullYear();
+  const m=String(last.getMonth()+1).padStart(2,'0');
+  const d=String(last.getDate()).padStart(2,'0');
+  return y+'-'+m+'-'+d;
+}
+function initPTODates(){
+  const today=todayStr(), max=getPTOMaxDate();
+  ['pto-start','pto-end'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.min=today; el.max=max;
+  });
+  // Show max date label
+  const maxD=new Date(max+'T00:00:00');
+  document.getElementById('pto-max-label').textContent=maxD.toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'});
+}
+
+function onPTOTypeChange(){
+  const type=document.getElementById('pto-type').value;
+  const endGroup=document.getElementById('fg-end-date');
+  const startEl=document.getElementById('pto-start');
+  const endEl=document.getElementById('pto-end');
+  if(type==='Half Day'){
+    // Hide end date — same as start
+    endGroup.style.display='none';
+    endEl.value=startEl.value;
+    document.getElementById('pto-days').value='0.5';
+    document.getElementById('pto-days-hint').textContent='Half day (0.5)';
+  } else {
+    endGroup.style.display='flex';
+    calcDays();
+  }
+}
+
+function calcDays(){
+  const type=document.getElementById('pto-type').value;
+  if(type==='Half Day'){
+    document.getElementById('pto-days').value='0.5';
+    document.getElementById('pto-days-hint').textContent='Half day (0.5)';
+    // sync end date with start
+    const s=document.getElementById('pto-start').value;
+    document.getElementById('pto-end').value=s;
+    return;
+  }
+  const s=document.getElementById('pto-start').value,e=document.getElementById('pto-end').value;
+  if(s&&e&&e>=s){
+    const d=workDays(s,e);
+    document.getElementById('pto-days').value=d;
+    document.getElementById('pto-days-hint').textContent=d+' working day'+(d!==1?'s':'');
+  }else{
+    document.getElementById('pto-days').value='';
+    document.getElementById('pto-days-hint').textContent='';
+  }
+}
+
+async function submitPTO(){
+  const s=document.getElementById('pto-start').value;
+  const type=document.getElementById('pto-type').value;
+  const shift=document.getElementById('pto-shift').value;
+  const isHalf=type==='Half Day';
+  const e=isHalf?s:document.getElementById('pto-end').value;
+  const days=isHalf?0.5:parseFloat(document.getElementById('pto-days').value||0);
+  const reason=document.getElementById('pto-reason').value.trim();
+
+  if(!s){toast('Please select a start date.','err');return;}
+  if(!isHalf&&!e){toast('Please select an end date.','err');return;}
+  if(!isHalf&&e<s){toast('End date must be after start date.','err');return;}
+  if(!shift){toast('Please select your MNL shift time.','err');return;}
+  if(!days){toast('Total days cannot be zero.','err');return;}
+
+  // Validate against max date
+  const max=getPTOMaxDate();
+  if(s>max||e>max){toast('Date exceeds the allowed 2-month window.','err');return;}
+
+  const btn=document.getElementById('btn-submit');btn.disabled=true;btn.textContent='Submitting…';
+  try{
+    const myRow=schedData.find(r=>(r.Email||'').toLowerCase()===currentUser.email);
+    const now=todayStr();
+    const obj={
+      UniqueKey:currentUser.email+'_PTO_'+s,Email:currentUser.email,
+      FullName:myRow?myRow['Full Name']:currentUser.name,
+      LineManager:myRow?myRow['Line Manager']:'',Cluster:myRow?myRow.Cluster:'',
+      RequestedOn:now,StartDate:s,EndDate:e,TotalDays:days,
+      PTOType:'Vacation Leave – '+type+' ('+shift+')',
+      Reason:reason||'—',Status:'Pending',ReviewedBy:'',ReviewedOn:'',Comments:''
+    };
+    const vals=PTO_HDRS.map(h=>obj[h]??'');
+    await appendRow(PTO_SHEET,PTO_HDRS,vals);
+    ptoData.push(Object.fromEntries(PTO_HDRS.map((h,i)=>[h,vals[i]])));
+    toast('✅ PTO submitted successfully!','ok');
+    ['pto-start','pto-end','pto-reason'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('pto-shift').value='';
+    document.getElementById('pto-type').value='Whole Day';
+    document.getElementById('fg-end-date').style.display='flex';
+    document.getElementById('pto-days').value='';
+    document.getElementById('pto-days-hint').textContent='';
+    goTab('status');
+  }catch(e){toast('Failed: '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='Submit PTO Request';}
+}
+
+function renderPTOStatus(){
+  const tbody=document.getElementById('pto-tbody');
+  const mine=ptoData.filter(r=>(r.Email||'').toLowerCase()===currentUser.email);
+  if(!mine.length){tbody.innerHTML='<tr><td colspan="9" class="empty">No PTO applications yet.</td></tr>';return;}
+  tbody.innerHTML=[...mine].reverse().map(r=>'<tr>'
+    +'<td>'+r.PTOType+'</td><td>'+fmtShort(r.StartDate)+'</td><td>'+fmtShort(r.EndDate)+'</td>'
+    +'<td>'+r.TotalDays+'</td><td style="max-width:160px;white-space:normal;">'+r.Reason+'</td>'
+    +'<td>'+fmtShort(r.RequestedOn)+'</td>'
+    +'<td><span class="badge '+((r.Status||'pending').toLowerCase())+'">'+(r.Status||'Pending')+'</span></td>'
+    +'<td>'+(r.ReviewedBy||'—')+'</td>'
+    +'<td style="max-width:140px;white-space:normal;">'+(r.Comments||'—')+'</td>'
+    +'</tr>').join('');
+}
+
+(async()=>{
+  try{
+    const i=getMsal();await i.initialize();
+    const r=await i.handleRedirectPromise();
+    if(r){i.setActiveAccount(r.account);await boot();return;}
+    const accts=i.getAllAccounts();
+    if(accts.length){i.setActiveAccount(accts[0]);await boot();}
+    else showPage('login');
+  }catch{showPage('login');}
+})();
+</script>
+</body>
+</html>
