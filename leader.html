@@ -276,9 +276,13 @@ async function api(path,method='GET',body=null){
 async function ensureIds(){
   if(fileId)return;
   loading('Connecting to SharePoint…');
-  const s=await api('/sites/'+CONFIG.spHostname+':'+CONFIG.spSitePath);
-  const d=await api('/sites/'+s.id+'/drive');driveId=d.id;
-  const f=await api('/drives/'+driveId+'/root:/'+CONFIG.excelPath);fileId=f.id;
+  // Step 1: resolve site (trailing colon required for path-based lookup)
+  const site=await api('/sites/'+CONFIG.spHostname+':'+CONFIG.spSitePath+':');
+  // Step 2: find file via site default drive — each path segment encoded separately
+  const encodedPath=CONFIG.excelPath.split('/').map(encodeURIComponent).join('/');
+  const file=await api('/sites/'+site.id+'/drive/root:/'+encodedPath);
+  driveId=file.parentReference.driveId;
+  fileId=file.id;
 }
 function wb(s){return'/drives/'+driveId+'/items/'+fileId+'/workbook'+s;}
 async function readSheet(name){
