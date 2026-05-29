@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MODO Attendance Dashboard v2</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/3.10.0/js/msal-browser.min.js"></script>
+<style>
+:root{
+  --primary:#1a1f5e;--accent:#6c3fc5;--bg:#f0f2f7;--card:#fff;
+  --border:#dde1ec;--text:#2c3e50;--muted:#7f8c8d;
+  --green:#27ae60;--red:#c0392b;--orange:#e67e22;--blue:#2980b9;--teal:#16a085;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+/* ── HEADER ── */
+.header{background:linear-gradient(135deg,var(--primary),#2d3561);color:#fff;padding:0 24px;
+  display:flex;align-items:center;justify-content:space-between;height:62px;
+  box-shadow:0 2px 10px rgba(0,0,0,.3);position:sticky;top:0;z-index:200}
+.header-left{display:flex;align-items:center;gap:14px}
+.logo{font-weight:900;font-size:1.15rem;letter-spacing:1.5px}
+.header-title{font-size:.95rem;font-weight:700}
+.badge-live{background:#27ae60;padding:3px 10px;border-radius:20px;font-size:.68rem;font-weight:800;animation:pulse 2s infinite}
+.badge-loading{background:#e67e22;padding:3px 10px;border-radius:20px;font-size:.68rem;font-weight:800}
+.badge-error{background:#c0392b;padding:3px 10px;border-radius:20px;font-size:.68rem;font-weight:800}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.header-right{display:flex;align-items:center;gap:8px}
+.mnl-clock{font-size:.8rem;font-family:monospace;background:rgba(255,255,255,.12);padding:5px 12px;border-radius:8px;letter-spacing:.5px;color:#fff}
+.btn-hdr{padding:6px 13px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;font-size:.76rem;font-weight:600;cursor:pointer}
+.btn-hdr:hover{background:rgba(255,255,255,.25)}
+.user-chip{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.12);padding:5px 12px 5px 7px;border-radius:20px;cursor:pointer;transition:.15s;position:relative}
+.user-chip:hover{background:rgba(255,255,255,.22)}
+.user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.72rem;color:#fff;flex-shrink:0}
+.user-chip-name{font-size:.8rem;font-weight:700;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip-dropdown{position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.15);min-width:160px;z-index:300;overflow:hidden;display:none}
+.chip-dropdown.open{display:block}
+.chip-dd-item{padding:10px 16px;font-size:.82rem;font-weight:600;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px}
+.chip-dd-item:hover{background:#f5f3ff;color:var(--accent)}
+/* ── LOGIN SCREEN ── */
+.select-card{background:#fff;border-radius:20px;padding:40px 44px;box-shadow:0 8px 40px rgba(26,31,94,.15);max-width:460px;width:100%}
+.select-card h1{font-size:1.3rem;font-weight:900;color:var(--primary);margin-bottom:4px}
+.select-card p{font-size:.83rem;color:var(--muted);margin-bottom:24px;line-height:1.6}
+.btn-confirm{width:100%;padding:14px;background:linear-gradient(135deg,var(--primary),var(--accent));border:none;color:#fff;border-radius:10px;font-size:.95rem;font-weight:800;cursor:pointer;letter-spacing:.3px;transition:.2s}
+.btn-confirm:hover{opacity:.9;transform:translateY(-1px)}
+.btn-confirm:disabled{opacity:.4;cursor:not-allowed;transform:none}
+/* ── CONTAINER / LAYOUT ── */
+.container{max-width:100%;padding:14px 20px}
+.section-title{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;margin-top:4px}
+/* ── TAB BAR ── */
+.tab-bar{display:flex;gap:6px;margin-bottom:14px;background:linear-gradient(135deg,#1a1f5e 0%,#2d2478 50%,#6c3fc5 100%);border-radius:12px;padding:8px;box-shadow:0 4px 14px rgba(26,31,94,.25)}
+.tab-btn{padding:11px 22px;border:none;background:transparent;font-size:.88rem;font-weight:700;color:rgba(255,255,255,.75);cursor:pointer;border-radius:8px;transition:.18s;font-family:inherit;position:relative}
+.tab-btn:hover{background:rgba(255,255,255,.12);color:#fff}
+.tab-btn.active{color:var(--primary);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18);transform:translateY(-1px)}
+.tab-btn.active::after{content:'';position:absolute;left:18%;right:18%;bottom:4px;height:3px;background:linear-gradient(90deg,#6c3fc5,#ff8b3d);border-radius:2px}
+.tab-pane{display:none}
+.tab-pane.active{display:block;animation:tabFade .2s ease}
+@keyframes tabFade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+/* ── ATTENDANCE HERO ── */
+.attendance-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:768px){.attendance-grid{grid-template-columns:1fr}}
+.shift-card,.checkin-card{background:var(--card);border-radius:16px;padding:24px;border:1px solid var(--border);box-shadow:0 2px 12px rgba(0,0,0,.06);position:relative;overflow:hidden}
+.shift-card::before,.checkin-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;border-radius:16px 16px 0 0}
+.shift-card::before{background:linear-gradient(90deg,var(--primary),var(--accent))}
+.checkin-card::before{background:linear-gradient(90deg,var(--green),#2ecc71)}
+.card-label{font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:8px}
+.shift-date{font-size:.92rem;font-weight:700;color:var(--primary);margin-bottom:10px}
+.shift-time{font-size:1.6rem;font-weight:900;color:var(--text);font-family:'Menlo','Consolas',monospace;margin-bottom:8px;letter-spacing:.5px}
+.shift-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.shift-detail{font-size:.78rem;color:var(--muted);margin-top:4px}
+.shift-detail strong{color:var(--text)}
+.live-clock{font-size:2.2rem;font-weight:900;font-family:'Menlo','Consolas',monospace;color:var(--primary);letter-spacing:2px;margin-bottom:2px;text-align:center}
+.clock-tz{font-size:.68rem;color:var(--muted);text-align:center;margin-bottom:20px;letter-spacing:.5px;font-weight:700;text-transform:uppercase}
+.btn-checkin{width:100%;padding:18px;background:linear-gradient(135deg,#27ae60,#2ecc71);border:none;color:#fff;border-radius:12px;font-size:1.1rem;font-weight:900;cursor:pointer;letter-spacing:1px;box-shadow:0 4px 16px rgba(39,174,96,.35);transition:.2s;text-transform:uppercase}
+.btn-checkin:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 22px rgba(39,174,96,.45)}
+.btn-checkout{width:100%;padding:18px;background:linear-gradient(135deg,#c0392b,#e74c3c);border:none;color:#fff;border-radius:12px;font-size:1.1rem;font-weight:900;cursor:pointer;letter-spacing:1px;box-shadow:0 4px 16px rgba(192,57,43,.35);transition:.2s;text-transform:uppercase}
+.btn-checkout:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 22px rgba(192,57,43,.45)}
+.btn-checkin:disabled,.btn-checkout:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.checked-info{background:#f1f8e9;border:1px solid #c5e1a5;border-radius:10px;padding:14px;margin-bottom:14px}
+.ci-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:.82rem}
+.ci-row:last-child{margin-bottom:0}
+.ci-key{color:var(--muted);font-weight:600}
+.ci-val{font-weight:700;color:var(--text)}
+.elapsed{font-size:1.15rem;font-weight:900;font-family:monospace;color:var(--accent);text-align:center;background:#f5f3ff;border-radius:8px;padding:8px;margin-bottom:14px}
+.rest-card{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;padding:32px;color:#fff;text-align:center;box-shadow:0 4px 20px rgba(108,63,197,.3);grid-column:1/-1}
+.leave-card{border-radius:16px;padding:32px;color:#fff;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.2);grid-column:1/-1}
+.leave-card.pto  {background:linear-gradient(135deg,#f7971e,#ffd200)}
+.leave-card.vl   {background:linear-gradient(135deg,#11998e,#38ef7d)}
+.leave-card.sl   {background:linear-gradient(135deg,#2193b0,#6dd5ed)}
+.leave-card.mat  {background:linear-gradient(135deg,#ee9ca7,#ffdde1)}
+.leave-card.loa  {background:linear-gradient(135deg,#868f96,#596164)}
+.leave-card.wfh  {background:linear-gradient(135deg,#4776e6,#8e54e9)}
+.leave-card.other{background:linear-gradient(135deg,#373b44,#4286f4)}
+.b-pto  {background:#fff3cd;color:#856404}
+.b-vl   {background:#d1f2eb;color:#0e6655}
+.b-sl   {background:#d6eaf8;color:#154360}
+.b-mat  {background:#fce4ec;color:#880e4f}
+.b-loa  {background:#eceff1;color:#37474f}
+.b-wfh  {background:#ede7f6;color:#4527a0}
+/* ── WEEKLY ROSTER ── */
+.week-roster{background:var(--card);border-radius:16px;padding:20px 24px;border:1px solid var(--border);box-shadow:0 2px 12px rgba(0,0,0,.06);margin-top:16px;overflow-x:auto}
+.week-roster h3{font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted);margin-bottom:14px}
+.week-table{width:100%;border-collapse:collapse;min-width:560px}
+.week-table th{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:6px 10px;text-align:center;border-bottom:2px solid var(--border)}
+.week-table td{padding:8px 10px;text-align:center;border-bottom:1px solid var(--border);font-size:.8rem}
+.week-table td.day-label{text-align:left;font-weight:700;font-size:.78rem;color:var(--text)}
+.week-table td.day-today{background:#f0ecff}
+.week-table th.today-hdr{background:#ede9ff;color:var(--accent);border-radius:6px 6px 0 0}
+.week-shift{font-size:.7rem;font-family:monospace;color:var(--muted);margin-top:2px}
+.b-p{background:#e8f5e9;color:#1b5e20;border-radius:10px;padding:2px 7px;font-size:.66rem;font-weight:800;white-space:nowrap;display:inline-block}
+.b-l{background:#fff3e0;color:#e65100;border-radius:10px;padding:2px 7px;font-size:.66rem;font-weight:800;white-space:nowrap;display:inline-block}
+.b-a{background:#ffebee;color:#c62828;border-radius:10px;padding:2px 7px;font-size:.66rem;font-weight:800;white-space:nowrap;display:inline-block}
+.b-o{background:#f5f5f5;color:#616161;border-radius:10px;padding:2px 7px;font-size:.66rem;font-weight:800;white-space:nowrap;display:inline-block}
+.b-lv{background:#fff3cd;color:#856404;border-radius:10px;padding:2px 7px;font-size:.66rem;font-weight:800;white-space:nowrap;display:inline-block}
+.b-nd{background:#f5f5f5;color:#bdbdbd;border-radius:10px;padding:2px 7px;font-size:.66rem;font-weight:700;white-space:nowrap;display:inline-block}
+.absent-card{background:linear-gradient(135deg,#ff6b6b,#c0392b);border-radius:16px;padding:24px;color:#fff;text-align:center;box-shadow:0 4px 20px rgba(192,57,43,.3)}
+.absent-card::before{background:none!important}
+.done-card{background:linear-gradient(135deg,#f0f2f7,#fff);border:1px solid var(--border)}
+.done-card::before{background:linear-gradient(90deg,var(--green),var(--teal))!important}
+.hint-box{border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.8rem;display:flex;gap:8px;align-items:flex-start}
+.hint-warn{background:#fff3e0;border:1px solid #ffe0b2;color:#e65100}
+.hint-info{background:#e3f2fd;border:1px solid #bbdefb;color:#1565c0}
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:12px;font-size:.68rem;font-weight:700;white-space:nowrap}
+.b-present{background:#e8f5e9;color:#1b5e20}
+.b-late   {background:#fff3e0;color:#e65100}
+.b-absent {background:#ffebee;color:#c62828}
+.b-off    {background:#f5f5f5;color:#616161}
+.b-workday{background:#e3f2fd;color:#1565c0}
+.b-auto   {background:#e8eaf6;color:#3949ab}
+.b-noci   {background:#fff8e1;color:#f57f17}
+.b-manual {background:#e3f2fd;color:#0d47a1}
+/* ── KPI CARDS ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.kpi-card{background:var(--card);border-radius:14px;padding:14px 16px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid var(--border);position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;border-radius:14px 14px 0 0}
+.kpi-card.green::before{background:var(--green)}.kpi-card.amber::before{background:var(--orange)}
+.kpi-card.red::before{background:var(--red)}.kpi-card.blue::before{background:var(--blue)}
+.kpi-card.grey::before{background:#95a5a6}.kpi-card.teal::before{background:var(--teal)}
+.kpi-icon{font-size:1.4rem;margin-bottom:6px}
+.kpi-val{font-size:2rem;font-weight:900;color:var(--primary);line-height:1}
+.kpi-label{font-size:.74rem;color:var(--muted);margin-top:4px}
+.kpi-sub{font-size:.7rem;font-weight:700;margin-top:6px}
+.kpi-card.green .kpi-sub{color:var(--green)}.kpi-card.amber .kpi-sub{color:var(--orange)}
+.kpi-card.red .kpi-sub{color:var(--red)}.kpi-card.blue .kpi-sub{color:var(--blue)}
+/* ── FILTERS + TABLE ── */
+.filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.filter-select{padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.8rem;background:#fff;outline:none;cursor:pointer;min-width:140px}
+.filter-select:focus{border-color:var(--accent)}
+.filter-date{padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.8rem;outline:none;background:#fff}
+.filter-date:focus{border-color:var(--accent)}
+.search-inp{padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.8rem;outline:none;width:200px}
+.search-inp:focus{border-color:var(--accent)}
+.btn-clear{padding:7px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:.78rem;background:#fff;color:var(--muted);cursor:pointer;font-weight:600}
+.btn-clear:hover{border-color:var(--red);color:var(--red)}
+.btn-export{padding:7px 14px;background:var(--green);border:none;color:#fff;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer}
+.table-card{background:var(--card);border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid var(--border);overflow:hidden;margin-bottom:20px}
+.table-header{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+.table-title{font-size:.88rem;font-weight:700}
+.row-count{font-size:.72rem;color:var(--muted)}
+.table-wrap{overflow-x:auto;max-height:clamp(320px,calc(100vh - 380px),680px);overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:.78rem}
+thead{position:sticky;top:0;z-index:10}
+thead tr{background:var(--primary);color:#fff}
+th{padding:10px 12px;text-align:left;font-size:.72rem;font-weight:600;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:#f5f3ff}
+/* ── SPINNER / STATES ── */
+.spinner{display:inline-block;width:30px;height:30px;border:4px solid rgba(108,63,197,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-box{text-align:center;padding:40px 20px;color:var(--muted)}
+.state-title{font-size:.95rem;font-weight:700;color:var(--text);margin:12px 0 6px}
+.state-msg{font-size:.82rem;line-height:1.7}
+/* ── LOADING OVERLAY ── */
+.overlay{position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:900;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.overlay-msg{font-size:.88rem;font-weight:700;color:var(--primary)}
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;z-index:9999;background:var(--primary);color:#fff;padding:12px 20px;border-radius:10px;font-size:.82rem;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.25);transform:translateY(80px);opacity:0;transition:.3s;max-width:380px;line-height:1.5}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{background:var(--green)}.toast.warn{background:var(--orange)}.toast.err{background:var(--red)}
+/* ── FOOTER ── */
+.footer{background:linear-gradient(90deg,#141a4f,#1a1f5e,#141a4f);color:#fff;padding:6px 18px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:.72rem;box-shadow:0 -1px 4px rgba(0,0,0,.12);border-top:1px solid #6c3fc5;margin-top:16px}
+</style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <div class="overlay-msg" id="overlayMsg">Loading…</div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <span class="logo">conduet<sup style="font-size:.5rem;vertical-align:super">®</sup></span>
+    <span class="header-title">MODO Attendance</span>
+    <span id="statusBadge" class="badge-loading">⟳ LOADING</span>
+  </div>
+  <div class="header-right">
+    <span class="mnl-clock" id="headerClock">--:--:-- --</span>
+    <div id="userChip" class="user-chip" onclick="toggleChipMenu()" title="Account options" style="display:none">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <span class="user-chip-name" id="userChipName">—</span>
+      <span style="font-size:.65rem;opacity:.7;margin-left:2px">▾</span>
+      <div class="chip-dropdown" id="chipDropdown">
+        <div class="chip-dd-item" onclick="signOut();event.stopPropagation()">🚪 Sign Out</div>
+      </div>
+    </div>
+    <button class="btn-hdr" onclick="refreshData()">↻ Refresh</button>
+  </div>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="min-height:calc(100vh - 62px);display:none;align-items:center;justify-content:center;background:linear-gradient(135deg,#f0f2f7,#e8eaf6)">
+  <div class="select-card" style="text-align:center;max-width:400px">
+    <div style="font-size:3rem;margin-bottom:12px">📋</div>
+    <h1 style="font-size:1.4rem;font-weight:900;color:var(--primary);margin-bottom:8px">MODO Attendance</h1>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:28px">Sign in with your Conduet Microsoft account to access your attendance dashboard.</p>
+    <button class="btn-confirm" onclick="signIn()" id="btnSignIn">
+      <span style="font-size:1.1rem;margin-right:8px">🔐</span> Sign in with Microsoft
+    </button>
+    <p style="margin-top:16px;font-size:.72rem;color:var(--muted)">Your identity is verified by Microsoft 365.<br>No password needed beyond your Microsoft login.</p>
+    <div id="loginError" style="margin-top:12px;color:var(--red);font-size:.78rem;display:none"></div>
+  </div>
+</div>
+
+<!-- MAIN DASHBOARD -->
+<div id="mainDash" style="display:none">
+<div class="container">
+
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabBtn-attendance" onclick="switchTab('attendance')">🕐 My Attendance</button>
+    <button class="tab-btn" id="tabBtn-history"    onclick="switchTab('history')">📋 My History</button>
+    <button class="tab-btn" id="tabBtn-team"       onclick="switchTab('team')"    style="display:none">👥 Team View</button>
+    <button class="tab-btn" id="tabBtn-summary"    onclick="switchTab('summary')" style="display:none">📊 Summary</button>
+  </div>
+
+  <!-- MY ATTENDANCE -->
+  <div id="tab-attendance" class="tab-pane active">
+    <div id="attendanceContent">
+      <div class="state-box"><div class="spinner"></div><div class="state-title">Loading your schedule…</div></div>
+    </div>
+    <div id="agentWeekView"></div>
+  </div>
+
+  <!-- MY HISTORY -->
+  <div id="tab-history" class="tab-pane">
+    <p class="section-title">📋 My Attendance History</p>
+    <div class="filters">
+      <select class="filter-select" id="hist-month"  onchange="renderHistory()"><option value="">All Months</option></select>
+      <select class="filter-select" id="hist-status" onchange="renderHistory()">
+        <option value="">All Statuses</option>
+        <option>Present</option><option>Late</option><option>Absent</option>
+      </select>
+      <button class="btn-clear" onclick="['hist-month','hist-status'].forEach(id=>{document.getElementById(id).value=''});renderHistory()">✕ Clear</button>
+      <button class="btn-export" onclick="exportMyCSV()">⬇ Export</button>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">📄 My Records <span class="row-count" id="histCount"></span></div>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr>
+          <th>Date</th><th>Day</th><th>Shift</th>
+          <th>Check In</th><th>Check Out</th>
+          <th>Status</th><th>Late (min)</th><th>Checkout</th>
+        </tr></thead>
+        <tbody id="histBody"><tr><td colspan="8"><div class="state-box"><div class="spinner"></div></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TEAM VIEW -->
+  <div id="tab-team" class="tab-pane">
+    <p class="section-title">📊 Team Overview — <span id="teamDateLabel"></span></p>
+    <div class="kpi-grid" id="teamKpis"></div>
+    <div class="filters">
+      <input type="date" class="filter-date" id="team-date" onchange="renderTeam()">
+      <select class="filter-select" id="team-status"  onchange="renderTeam()"><option value="">All Statuses</option><option>Present</option><option>Late</option><option>Absent</option><option>No Check-in</option><option>Rest Day</option></select>
+      <select class="filter-select" id="team-manager" onchange="renderTeam()"><option value="">All Managers</option></select>
+      <select class="filter-select" id="team-cluster" onchange="renderTeam()"><option value="">All Clusters</option></select>
+      <input type="text"  class="search-inp"   id="team-search"  placeholder="🔍 Search name…" oninput="renderTeam()">
+      <button class="btn-clear"   onclick="clearTeamFilters()">✕ Clear</button>
+      <button class="btn-export"  onclick="exportTeamCSV()">⬇ Export</button>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">👥 Team Attendance <span class="row-count" id="teamCount"></span></div>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr>
+          <th>Full Name</th><th>Line Manager</th><th>Cluster</th>
+          <th>Shift</th><th>Status</th>
+          <th>Check In</th><th>Check Out</th><th>Late (min)</th>
+        </tr></thead>
+        <tbody id="teamBody"><tr><td colspan="8"><div class="state-box"><div class="spinner"></div></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUMMARY TAB -->
+  <div id="tab-summary" class="tab-pane">
+    <p class="section-title">📊 Attendance Summary</p>
+    <div class="filters" style="margin-bottom:12px">
+      <span style="font-size:.78rem;font-weight:600;color:var(--muted)">⏱ When:</span>
+      <select class="filter-select" id="sum-month"   onchange="renderSummary()"><option value="">All Months</option></select>
+      <input  type="date" class="filter-date" id="sum-from" onchange="renderSummary()" title="From date">
+      <input  type="date" class="filter-date" id="sum-to"   onchange="renderSummary()" title="To date">
+      <span style="font-size:.78rem;font-weight:600;color:var(--muted)">🏷 Who:</span>
+      <select class="filter-select" id="sum-status"  onchange="renderSummary()">
+        <option value="">All Statuses</option>
+        <option>Present</option><option>Late</option><option>Absent</option>
+        <option>Half Day</option><option>On PTO</option><option>MAT</option><option>LOA</option>
+      </select>
+      <select class="filter-select" id="sum-cluster" onchange="renderSummary()"><option value="">All Clusters</option></select>
+      <select class="filter-select" id="sum-manager" onchange="renderSummary()"><option value="">All Line Managers</option></select>
+      <button class="btn-clear" onclick="clearSummaryFilters()">✕ Clear All</button>
+      <button class="btn-export" onclick="exportSummaryCSV()">⬇ Export</button>
+    </div>
+    <div class="kpi-grid" id="sumKpis" style="margin-bottom:14px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:var(--card);border-radius:14px;padding:18px 20px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:12px">📊 Attendance by Status</div>
+        <div style="position:relative;height:260px"><canvas id="sumChartStatus"></canvas></div>
+      </div>
+      <div style="background:var(--card);border-radius:14px;padding:18px 20px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:12px">📉 Daily Absent &amp; Late Trend</div>
+        <div style="position:relative;height:260px"><canvas id="sumChartTrend"></canvas></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:var(--card);border-radius:14px;padding:18px 20px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:12px">👥 Absences by Cluster</div>
+        <div style="position:relative;height:260px"><canvas id="sumChartCluster"></canvas></div>
+      </div>
+      <div style="background:var(--card);border-radius:14px;padding:18px 20px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+        <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:12px">🧑‍💼 Absences by Line Manager</div>
+        <div style="position:relative;height:260px"><canvas id="sumChartManager"></canvas></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">🔴 Absence Count per Agent <span class="row-count" id="sumCount"></span></div>
+        <input type="text" class="search-inp" id="sum-search" placeholder="🔍 Search name, manager, cluster…" oninput="renderSummary()" style="width:280px">
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr>
+          <th>Full Name</th>
+          <th>Line Manager</th>
+          <th>Cluster</th>
+          <th style="text-align:center">Present</th>
+          <th style="text-align:center">Late</th>
+          <th style="text-align:center">Half Day</th>
+          <th style="text-align:center">Absent</th>
+          <th style="text-align:center">On PTO</th>
+          <th style="text-align:center">MAT</th>
+          <th style="text-align:center">LOA</th>
+          <th style="text-align:center">Att. Rate</th>
+        </tr></thead>
+        <tbody id="sumBody"><tr><td colspan="11"><div class="state-box"><div class="spinner"></div></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+</div><!-- /mainDash -->
+
+<div class="toast" id="toast"></div>
+
+<div class="footer">
+  <span style="background:rgba(255,255,255,.08);padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.15);font-weight:700;letter-spacing:.6px">MODO WFM</span>
+  <span>·</span><span>Attendance Dashboard v2</span><span>·</span>
+  <span>All times in Manila Time (PHT, UTC+8)</span>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════════════════════
+const CONFIG = {
+  clientId:      '7dfd41b7-1960-49c6-a701-b021a28550bb',
+  tenantId:      '3acfc3b8-ea64-4ce1-8910-f91e9c67a3fc',
+  siteId:        '228fe577-1a6a-49fb-ab4f-4c8ee3332419',
+  fileId:        '54e07e33-d875-4333-9c92-6231c963b134',
+  scheduleTable: 'Schedule_Raw',
+  checkInTable:  'CheckIn_CheckOut',
+  absentGraceHours: 6,
+  autoCheckoutMins: 10,
+  adminEmails: ['john.dolliente@conduet.com'],
+  summaryAccessEmails: [
+    'nabil.libacao@conduet.cx',
+    'mark.albero@conduet.com',
+    'lizel.geronimo@conduet.cx',
+    'kirk.moncay@conduet.com',
+    'nicole.domingo@conduet.com',
+    'kyng.trasmonte@conduet.cx',
+    'aileen.marzan@conduet.com',
+    'jose.bandalan@conduet.com',
+    'joshua.castillo@conduet.com'
+  ]
+};
+
+// ── MSAL ─────────────────────────────────────────────────────────
+const msalConfig = {
+  auth: {
+    clientId: CONFIG.clientId,
+    authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+    redirectUri: window.location.origin + window.location.pathname,
+  },
+  cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+};
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+const GRAPH_SCOPES = ['User.Read', 'Files.ReadWrite.All', 'Sites.ReadWrite.All'];
+
+// ── CONSTANTS ────────────────────────────────────────────────────
+const MNL = 'Asia/Manila';
+const CI_COLS = ['UniqueKey','Email','FullName','Date','CheckInTime','CheckOutTime',
+  'ShiftStart','ShiftEnd','ScheduleStatus','AttendanceStatus','LateMinutes',
+  'IsAutoCheckout','LineManager','Cluster','Month','Notes','SubmittedBy'];
+
+// ── STATE ────────────────────────────────────────────────────────
+let scheduleRows = [], checkInRows = [];
+let currentUser  = null;
+let userRole     = 'employee';
+let todaySched   = null, todayCI = null;
+let clockTmr, autoTmr, elapsedTmr;
+let _visChk = null;
+
+// ── GRAPH API HELPERS ────────────────────────────────────────────
+const FILE_API = () => `https://graph.microsoft.com/v1.0/sites/${CONFIG.siteId}/drive/items/${CONFIG.fileId}/workbook`;
+const _hdrCache = {};
+
+async function getToken() {
+  const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
+  if (!account) throw new Error('Not signed in');
+  try {
+    const r = await msalInstance.acquireTokenSilent({ scopes: GRAPH_SCOPES, account });
+    return r.accessToken;
+  } catch {
+    const r = await msalInstance.acquireTokenPopup({ scopes: GRAPH_SCOPES });
+    return r.accessToken;
+  }
+}
+
+async function graphCall(method, url, body = null) {
+  const token = await getToken();
+  const resp = await fetch(`https://graph.microsoft.com/v1.0${url}`, {
+    method,
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (resp.status === 204) return null;
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data?.error?.message || `Graph error ${resp.status}`);
+  return data;
+}
+
+async function getTableHeaders(tableName) {
+  if (_hdrCache[tableName]) return _hdrCache[tableName];
+  const r = await graphCall('GET', `${FILE_API()}/tables/${tableName}/headerRowRange`);
+  _hdrCache[tableName] = r.values[0];
+  return _hdrCache[tableName];
+}
+
+async function readExcelTable(tableName) {
+  const headers = await getTableHeaders(tableName);
+  const rows = await graphCall('GET', `${FILE_API()}/tables/${tableName}/rows?$top=5000`);
+  return (rows.value || []).map(row => {
+    const obj = { _rowIndex: row.index };
+    headers.forEach((h, i) => { obj[h] = row.values[0][i] ?? ''; });
+    return obj;
+  });
+}
+
+async function addExcelRow(tableName, rowObj) {
+  const headers = await getTableHeaders(tableName);
+  const values = headers.map(h => rowObj[h] ?? '');
+  await graphCall('POST', `${FILE_API()}/tables/${tableName}/rows/add`, { values: [values] });
+}
+
+async function updateExcelRow(tableName, rowIndex, updates) {
+  const headers = await getTableHeaders(tableName);
+  const row = await graphCall('GET', `${FILE_API()}/tables/${tableName}/rows/itemAt(index=${rowIndex})`);
+  const newValues = row.values[0].map((val, i) => updates.hasOwnProperty(headers[i]) ? updates[headers[i]] : val);
+  await graphCall('PATCH', `${FILE_API()}/tables/${tableName}/rows/itemAt(index=${rowIndex})`, { values: [newValues] });
+}
+
+// ── AUTH FUNCTIONS ───────────────────────────────────────────────
+async function signIn() {
+  const btn = document.getElementById('btnSignIn');
+  const errEl = document.getElementById('loginError');
+  btn.disabled = true;
+  btn.textContent = '⏳ Signing in…';
+  errEl.style.display = 'none';
+  try {
+    await msalInstance.initialize();
+    const resp = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
+    msalInstance.setActiveAccount(resp.account);
+    await bootDashboard(resp.account);
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<span style="font-size:1.1rem;margin-right:8px">🔐</span> Sign in with Microsoft';
+    errEl.textContent = e.message.includes('user_cancelled') ? 'Sign-in was cancelled.' : 'Sign-in failed: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function signOut() {
+  msalInstance.logoutPopup().then(() => location.reload());
+}
+
+async function tryRestoreSession() {
+  await msalInstance.initialize();
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    msalInstance.setActiveAccount(accounts[0]);
+    await bootDashboard(accounts[0]);
+    return true;
+  }
+  return false;
+}
+
+function toggleChipMenu() {
+  document.getElementById('chipDropdown').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  const chip = document.getElementById('userChip');
+  if (chip && !chip.contains(e.target)) {
+    document.getElementById('chipDropdown')?.classList.remove('open');
+  }
+});
+
+// ── BOOT DASHBOARD ───────────────────────────────────────────────
+async function bootDashboard(account) {
+  currentUser = {
+    email: account.username.toLowerCase(),
+    fullName: account.name || account.username,
+    displayName: account.name
+  };
+
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('mainDash').style.display = 'block';
+
+  document.getElementById('userChipName').textContent = currentUser.fullName;
+  document.getElementById('userAvatar').textContent = currentUser.fullName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('userChip').style.display = 'flex';
+
+  showOverlay('Loading your schedule…');
+  // 30-second timeout — if Graph API hangs, surface the error
+  const loadTimeout = setTimeout(() => {
+    hideOverlay();
+    updateBadge('error');
+    showToast('Loading timed out. Check your Azure config or network connection.', 'err');
+  }, 30000);
+  try {
+    await loadScheduleData();
+    clearTimeout(loadTimeout);
+    hideOverlay();
+    updateBadge('live');
+    initDashboard();
+  } catch(e) {
+    clearTimeout(loadTimeout);
+    hideOverlay();
+    updateBadge('error');
+    // Surface the full error so the user can see what went wrong
+    const msg = e.message || String(e);
+    showToast('Data load failed: ' + msg, 'err');
+    console.error('[MODO] bootDashboard error:', e);
+    // Show error in a persistent banner so it doesn't disappear after 5s
+    const existingBanner = document.getElementById('loadErrBanner');
+    if (!existingBanner) {
+      const banner = document.createElement('div');
+      banner.id = 'loadErrBanner';
+      banner.style.cssText = 'background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:14px 18px;margin:16px;font-size:.82rem;color:#7f1d1d';
+      banner.innerHTML = `<strong>⚠️ Could not load data from SharePoint:</strong><br>${msg}<br><br>
+        <button onclick="document.getElementById('loadErrBanner').remove();refreshData()"
+          style="padding:6px 14px;background:#c0392b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;margin-right:8px">
+          🔄 Retry
+        </button>
+        <button onclick="signOut()"
+          style="padding:6px 14px;background:#374151;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">
+          Sign Out
+        </button>`;
+      document.getElementById('mainDash')?.appendChild(banner);
+    }
+  }
+}
+
+// ── DATA LOADING ─────────────────────────────────────────────────
+async function loadScheduleData() {
+  const rawSchedule = await readExcelTable(CONFIG.scheduleTable);
+  scheduleRows = pivotScheduleRaw(rawSchedule);
+  checkInRows  = await readExcelTable(CONFIG.checkInTable);
+}
+
+async function refreshData() {
+  showOverlay('Refreshing data…');
+  try {
+    await loadScheduleData();
+    hideOverlay();
+    updateBadge('live');
+    initDashboard();
+    showToast('Data refreshed', 'ok');
+  } catch(e) {
+    hideOverlay();
+    updateBadge('error');
+    showToast('Refresh failed: ' + e.message, 'err');
+  }
+}
+
+// ── MNL HELPERS ──────────────────────────────────────────────────
+const mnlNow   = ()    => new Date(new Date().toLocaleString('en-US',{timeZone:MNL}));
+const mnlDate  = (d)   => (d||mnlNow()).toLocaleDateString('en-CA',{timeZone:MNL});
+const fmtT     = (d)   => { if(!d) return '—'; return new Date(d).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:MNL}); };
+const fmtTS    = (d)   => { if(!d) return '—'; return new Date(d).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true,timeZone:MNL}); };
+const fmtDate  = (d)   => { if(!d) return '—'; return new Date(d+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}); };
+const fmtDay   = (d)   => { if(!d) return '—'; return new Date(d+'T00:00:00').toLocaleDateString('en-PH',{weekday:'long'}); };
+const fmtMonth = (ym)  => { const [y,m]=ym.split('-'); return new Date(+y,+m-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'}); };
+const initials = (n)   => (n||'?').split(' ').slice(0,2).map(x=>x[0]).join('').toUpperCase();
+
+function parseHHMM(v) {
+  if (!v && v!==0) return null;
+  if (typeof v==='number' && v>=0 && v<1.001) {
+    const s=Math.round(v*86400), h=Math.floor(s/3600)%24, m=Math.floor((s%3600)/60);
+    return pad(h)+':'+pad(m);
+  }
+  const s=String(v).trim();
+  const iso=s.match(/T(\d{1,2}):(\d{2})/);
+  if (iso) return pad(+iso[1])+':'+iso[2];
+  const hm=s.match(/^(\d{1,2}):(\d{2})/);
+  if (hm) return pad(+hm[1])+':'+hm[2];
+  return null;
+}
+const pad = n => String(n).padStart(2,'0');
+
+function shiftDts(dateStr, startHH, endHH) {
+  const [sh,sm]=startHH.split(':').map(Number);
+  const [eh,em]=endHH.split(':').map(Number);
+  const base  = new Date(dateStr+'T00:00:00');
+  const startDt = new Date(base); startDt.setHours(sh,sm,0,0);
+  const endDt   = new Date(base); endDt.setHours(eh,em,0,0);
+  if (endDt<=startDt) endDt.setDate(endDt.getDate()+1);
+  return {startDt, endDt};
+}
+
+function fmtShift(hhmm) {
+  if (!hhmm) return '—';
+  const [h,m]=hhmm.split(':').map(Number);
+  return `${pad(h%12||12)}:${pad(m)} ${h<12?'AM':'PM'}`;
+}
+// ── SCHEDULE_RAW PIVOT ────────────────────────────────────────────
+function pivotScheduleRaw(rawRows) {
+  const META_COLS = new Set(['Email','Username','EID','Line Manager','Cluster','Full Name',
+    'email','username','eid','line manager','cluster','full name']);
+  const MONTH_MAP = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  const now = new Date();
+  const nowYear = now.getFullYear();
+  const nowMon  = now.getMonth();
+  const pivoted = [];
+
+  rawRows.forEach(row => {
+    const email = String(row['Email']||row['email']||'').toLowerCase().trim();
+    if (!email) return;
+    const fullName    = String(row['Full Name']||row['FullName']||row['full name']||email);
+    const lineManager = String(row['Line Manager']||row['LineManager']||row['line manager']||'—');
+    const cluster     = String(row['Cluster']||row['cluster']||'—');
+    const eid         = String(row['EID']||row['eid']||'');
+
+    Object.keys(row).forEach(col => {
+      if (META_COLS.has(col.toLowerCase())) return;
+      const dm = col.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+      if (!dm) return;
+      const day = parseInt(dm[1], 10);
+      const monKey = dm[2].toLowerCase().slice(0,3);
+      const mon = MONTH_MAP[monKey];
+      if (mon === undefined || isNaN(day)) return;
+      let year = nowYear;
+      const diff = mon - nowMon;
+      if (diff >  9) year--;
+      if (diff < -9) year++;
+      const dateStr = `${year}-${String(mon+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const month   = `${year}-${String(mon+1).padStart(2,'0')}`;
+      const cellVal = String(row[col]||'').trim();
+      let shiftStart='', shiftEnd='', status='OFF';
+      if (!cellVal || /^off$/i.test(cellVal)) {
+        status = 'OFF';
+      } else if (/^(PTO|VL|SL|EL|HL|BL|SIL|MAT|MATERNITY|LOA|WFH|SP|AWOL|on\s*pto|sick|vacation|leave|holiday)/i.test(cellVal)) {
+        status = cellVal.trim().toUpperCase();
+        shiftStart = ''; shiftEnd = '';
+      } else {
+        const sm = cellVal.match(/^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+        if (sm) {
+          shiftStart = sm[1].length===4 ? '0'+sm[1] : sm[1];
+          shiftEnd   = sm[2].length===4 ? '0'+sm[2] : sm[2];
+          status = 'Workday';
+        } else {
+          status = 'Workday';
+        }
+      }
+      pivoted.push({
+        'Email':        email,
+        'Full Name':    fullName,
+        'FullName':     fullName,
+        'Line Manager': lineManager,
+        'LineManager':  lineManager,
+        'Cluster':      cluster,
+        'EID':          eid,
+        'Shift Date':   dateStr,
+        'ShiftDate':    dateStr,
+        'ShiftStart':   shiftStart,
+        'ShiftEnd':     shiftEnd,
+        'Status':       status,
+        'Month':        month
+      });
+    });
+  });
+  return pivoted;
+}
+
+// ── LEAVE HELPERS ────────────────────────────────────────────────
+const LEAVE_RE=/^(PTO|VL|SL|EL|HL|BL|SIL|MAT|MATERNITY|LOA|WFH|SP|AWOL|on\s*pto|sick|vacation|leave|holiday)/i;
+function isLeaveStatus(raw){return LEAVE_RE.test(String(raw||'').trim());}
+function leaveEmoji(raw){
+  const r=String(raw||'').toUpperCase().trim();
+  if(r.startsWith('PTO')||r.startsWith('VL'))return'🏖️';
+  if(r.startsWith('SL')||r.startsWith('SICK'))return'🤒';
+  if(r.startsWith('MAT'))return'🤱';
+  if(r.startsWith('LOA'))return'📋';
+  if(r.startsWith('WFH'))return'🏠';
+  if(r.startsWith('AWOL'))return'⚠️';
+  return'📅';
+}
+function leaveCardClass(raw){
+  const r=String(raw||'').toUpperCase().trim();
+  if(r.startsWith('PTO')||r.startsWith('VL'))return'pto';
+  if(r.startsWith('SL')||r.startsWith('SICK'))return'sl';
+  if(r.startsWith('MAT'))return'mat';
+  if(r.startsWith('LOA'))return'loa';
+  if(r.startsWith('WFH'))return'wfh';
+  return'other';
+}
+
+// ── DASHBOARD INIT ────────────────────────────────────────────────
+function initDashboard() {
+  const email = currentUser.email;
+
+  const isAdmin = CONFIG.adminEmails.map(e=>e.toLowerCase()).includes(email);
+  if (isAdmin) {
+    userRole='admin';
+  } else {
+    const isManager = scheduleRows.some(r=>
+      String(r['Line Manager']||r['LineManager']||'').toLowerCase().trim()===email
+    );
+    userRole = isManager?'manager':'employee';
+  }
+
+  const isSummaryUser = userRole!=='employee' ||
+    CONFIG.summaryAccessEmails.map(e=>e.toLowerCase()).includes(email);
+
+  const teamTab = document.getElementById('tabBtn-team');
+  if (userRole!=='employee') {
+    teamTab.style.display='inline-block';
+    const today=mnlDate();
+    const tdEl=document.getElementById('team-date');
+    if(!tdEl.value) tdEl.value=today;
+    populateTeamDropdowns();
+  } else {
+    teamTab.style.display='none';
+  }
+
+  const sumTab = document.getElementById('tabBtn-summary');
+  if (isSummaryUser) {
+    sumTab.style.display='inline-block';
+    populateSummaryDropdowns();
+  } else {
+    sumTab.style.display='none';
+  }
+
+  const today = mnlDate();
+  todaySched = scheduleRows.find(r=> {
+    const re=String(r['Email']||'').toLowerCase().trim();
+    const rd=String(r['Shift Date']||r['ShiftDate']||'').slice(0,10);
+    return re===email && rd===today;
+  })||null;
+
+  todayCI = checkInRows.find(r=>{
+    const re=String(r['Email']||r['email']||'').toLowerCase().trim();
+    const rd=String(r['Date']||r['date']||'').slice(0,10);
+    return re===email && rd===today;
+  })||null;
+
+  renderAttendance();
+  renderHistory();
+  if (userRole!=='employee') renderTeam();
+  if (isSummaryUser) renderSummary();
+
+  startClock();
+  startAutoCheckers();
+}
+
+// ── RENDER: MY ATTENDANCE ─────────────────────────────────────────
+function renderAttendance() {
+  const el   = document.getElementById('attendanceContent');
+  const now  = mnlNow();
+  const today= mnlDate(now);
+  const sched= todaySched;
+  const raw  = sched?String(sched['Status']||'').trim():'';
+  const isOff= !sched || /^off$/i.test(raw) || !raw;
+  const isLeave= !isOff && isLeaveStatus(raw);
+
+  const rawS = sched?(sched['ShiftStart']||sched['shiftstart']||''):'';
+  const rawE = sched?(sched['ShiftEnd']  ||sched['shiftend']  ||''):'';
+  const startHH=parseHHMM(rawS), endHH=parseHHMM(rawE);
+
+  const manager=sched?String(sched['Line Manager']||sched['LineManager']||'—'):'—';
+  const cluster=sched?String(sched['Cluster']||'—'):'—';
+  const dayLabel=now.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:MNL});
+  const shiftDisplay=(startHH&&endHH)?`${fmtShift(startHH)} — ${fmtShift(endHH)}`:(isOff?'Rest Day':'No shift data');
+
+  const ci  = todayCI;
+  const isAbsent     = ci && !ci['CheckInTime'] && ci['AttendanceStatus']==='Absent';
+  const isCheckedIn  = ci && ci['CheckInTime'] && !ci['CheckOutTime'];
+  const isCheckedOut = ci && ci['CheckOutTime'];
+  const lateMin = parseInt(ci?.['LateMinutes']||0,10);
+
+  if (isOff) {
+    el.innerHTML=`<div class="rest-card">
+      <div style="font-size:3rem;margin-bottom:12px">🌴</div>
+      <h2 style="font-size:1.4rem;font-weight:900;margin-bottom:8px">Rest Day</h2>
+      <p style="font-size:.87rem;opacity:.85">${dayLabel}</p>
+      <p style="margin-top:8px;opacity:.7;font-size:.8rem">No shift scheduled today. Enjoy your day!</p>
+    </div>`;
+    renderWeeklyAgentView();
+    return;
+  }
+
+  if (isLeave) {
+    const leaveLabel=raw.toUpperCase().trim();
+    const cls=leaveCardClass(raw);
+    const emoji=leaveEmoji(raw);
+    el.innerHTML=`<div class="leave-card ${cls}" style="${cls==='pto'||cls==='vl'?'color:#333':''}">
+      <div style="font-size:3rem;margin-bottom:12px">${emoji}</div>
+      <h2 style="font-size:1.4rem;font-weight:900;margin-bottom:8px">${leaveLabel}</h2>
+      <p style="font-size:.87rem;opacity:.85">${dayLabel}</p>
+      <p style="margin-top:8px;opacity:.75;font-size:.8rem">You are on ${leaveLabel} today. Enjoy your time off!</p>
+      <p style="margin-top:10px;font-size:.75rem;opacity:.65">Line Manager: <strong>${manager}</strong> · Cluster: <strong>${cluster}</strong></p>
+    </div>`;
+    renderWeeklyAgentView();
+    return;
+  }
+
+  const shiftCard=`<div class="shift-card">
+    <div class="card-label">📅 Today's Shift</div>
+    <div class="shift-date">${dayLabel}</div>
+    <div class="shift-time">${shiftDisplay}</div>
+    <div class="shift-meta">
+      <span class="badge b-workday">🗓 ${raw||'Workday'}</span>
+      ${lateMin>0&&(isCheckedIn||isCheckedOut)?`<span class="badge b-late">⏰ ${lateMin} min late</span>`:''}
+      ${isCheckedOut&&ci['IsAutoCheckout']==='TRUE'?`<span class="badge b-auto">🔄 Auto-checkout</span>`:''}
+    </div>
+    <div class="shift-detail">Line Manager: <strong>${manager}</strong> &nbsp;|&nbsp; Cluster: <strong>${cluster}</strong></div>
+  </div>`;
+
+  if (isAbsent) {
+    el.innerHTML=`<div class="attendance-grid">${shiftCard}
+    <div class="absent-card">
+      <div style="font-size:2.5rem;margin-bottom:10px">❌</div>
+      <h2 style="font-size:1.15rem;font-weight:900;margin-bottom:8px">Marked Absent</h2>
+      <p style="font-size:.83rem;opacity:.85">No check-in detected within ${CONFIG.absentGraceHours} hours of your shift start.</p>
+      ${startHH&&endHH?`<p style="margin-top:8px;opacity:.7;font-size:.8rem">Shift was: ${fmtShift(startHH)} — ${fmtShift(endHH)}</p>`:''}
+    </div></div>`;
+    renderWeeklyAgentView();
+    return;
+  }
+
+  if (isCheckedOut) {
+    const st=ci['AttendanceStatus']||'Present';
+    const sc=st==='Late'?'b-late':st==='Absent'?'b-absent':'b-present';
+    el.innerHTML=`<div class="attendance-grid">${shiftCard}
+    <div class="checkin-card done-card">
+      <div style="text-align:center;font-size:2.5rem;margin-bottom:8px">✅</div>
+      <div style="text-align:center;font-size:.95rem;font-weight:800;color:var(--green);margin-bottom:16px">Shift Complete</div>
+      <div class="checked-info" style="background:#f1f8e9">
+        <div class="ci-row"><span class="ci-key">Status</span><span class="badge ${sc}">${st}</span></div>
+        <div class="ci-row"><span class="ci-key">Check In</span><span class="ci-val">${fmtT(new Date(ci['CheckInTime']))}</span></div>
+        <div class="ci-row"><span class="ci-key">Check Out</span><span class="ci-val">${fmtT(new Date(ci['CheckOutTime']))} ${ci['IsAutoCheckout']==='TRUE'?'<span class="badge b-auto" style="font-size:.6rem">🔄 Auto</span>':'<span class="badge b-manual" style="font-size:.6rem">✅ Manual</span>'}</span></div>
+        ${lateMin>0?`<div class="ci-row"><span class="ci-key">Late by</span><span class="ci-val" style="color:var(--orange)">${lateMin} min</span></div>`:''}
+      </div>
+    </div></div>`;
+    renderWeeklyAgentView();
+    return;
+  }
+
+  if (isCheckedIn) {
+    const st=ci['AttendanceStatus']||'Present';
+    const sc=st==='Late'?'b-late':'b-present';
+    el.innerHTML=`<div class="attendance-grid">${shiftCard}
+    <div class="checkin-card">
+      <div class="live-clock" id="liveClock">--:--:--</div>
+      <div class="clock-tz">Manila Time · PHT UTC+8</div>
+      <div class="checked-info">
+        <div class="ci-row"><span class="ci-key">Status</span><span class="badge ${sc}">${st}</span></div>
+        <div class="ci-row"><span class="ci-key">Checked In</span><span class="ci-val">${fmtT(new Date(ci['CheckInTime']))}</span></div>
+        ${lateMin>0?`<div class="ci-row"><span class="ci-key">Late by</span><span class="ci-val" style="color:var(--orange)">${lateMin} min</span></div>`:''}
+      </div>
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);text-align:center;margin-bottom:4px">Time on Shift</div>
+      <div class="elapsed" id="elapsedTime">0h 0m 0s</div>
+      <button class="btn-checkout" id="btnCO" onclick="doCheckOut(false)">🔴 CHECK OUT</button>
+      ${endHH?`<div style="font-size:.7rem;color:var(--muted);text-align:center;margin-top:8px">Auto-checkout at ${fmtShift(endHH)} +${CONFIG.autoCheckoutMins} min</div>`:''}
+    </div></div>`;
+    startElapsed();
+    renderWeeklyAgentView();
+    return;
+  }
+
+  let hint='';
+  if (startHH) {
+    const {startDt}=shiftDts(today,startHH,endHH||'23:59');
+    const diffMs=startDt-now;
+    if (diffMs>0) {
+      const h=Math.floor(diffMs/3600000),m=Math.floor((diffMs%3600000)/60000);
+      hint=`<div class="hint-box hint-info">⏱ Shift starts in ${h>0?h+'h ':''}${m} min</div>`;
+    } else {
+      const lateM=Math.floor((now-startDt)/60000);
+      const left=Math.max(0,CONFIG.absentGraceHours*60-lateM);
+      hint=`<div class="hint-box hint-warn">⚠️ ${lateM} min past shift start — will be marked Absent in ${left} min if no check-in.</div>`;
+    }
+  }
+  el.innerHTML=`<div class="attendance-grid">${shiftCard}
+  <div class="checkin-card">
+    <div class="live-clock" id="liveClock">--:--:--</div>
+    <div class="clock-tz">Manila Time · PHT UTC+8</div>
+    ${hint}
+    <button class="btn-checkin" id="btnCI" onclick="doCheckIn()">✅ CHECK IN</button>
+    ${startHH&&endHH?`<div style="font-size:.7rem;color:var(--muted);text-align:center;margin-top:8px">Shift: ${fmtShift(startHH)} — ${fmtShift(endHH)}</div>`:''}
+  </div></div>`;
+  renderWeeklyAgentView();
+}
+// ── WEEKLY ROSTER VIEW ────────────────────────────────────────────
+function parseIso(iso){const[y,m,d]=iso.split('-').map(Number);return{y,m,d};}
+function toIso(y,m,d){return`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+function isoMonStr(iso){const{y,m,d}=parseIso(iso);return new Date(Date.UTC(y,m-1,d,12)).toLocaleDateString('en-PH',{month:'short',timeZone:'UTC'});}
+function isoDayNum(iso){return parseIso(iso).d;}
+
+function getWeekDates(anchorDate) {
+  const{y,m,d}=parseIso(anchorDate);
+  const dt=new Date(Date.UTC(y,m-1,d,12,0,0));
+  const dow=dt.getUTCDay();
+  const mondayOffset=dow===0?-6:1-dow;
+  return Array.from({length:7},(_,i)=>{
+    const dd=new Date(dt);
+    dd.setUTCDate(dt.getUTCDate()+mondayOffset+i);
+    return toIso(dd.getUTCFullYear(),dd.getUTCMonth()+1,dd.getUTCDate());
+  });
+}
+
+function renderWeeklyAgentView() {
+  const el = document.getElementById('agentWeekView');
+  if (!el) return;
+  if (!currentUser) { el.innerHTML=''; return; }
+
+  const today = mnlDate();
+  const weekDates = getWeekDates(today);
+  const email = (currentUser.email||'').toLowerCase();
+  const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  const schedByDate = {};
+  scheduleRows.forEach(r => {
+    if ((String(r['Email']||r['email']||'')).toLowerCase().trim() !== email) return;
+    const d = String(r['ShiftDate']||r['shiftdate']||r['Shift Date']||'').slice(0,10);
+    if (d) schedByDate[d] = r;
+  });
+
+  const ciByDate = {};
+  checkInRows.forEach(r => {
+    if ((String(r['Email']||r['email']||'')).toLowerCase().trim() !== email) return;
+    const d = String(r['Date']||r['date']||'').slice(0,10);
+    if (d) ciByDate[d] = r;
+  });
+
+  let thCells = '<th class="day-label-hdr" style="text-align:left;padding:6px 10px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Info</th>';
+  let shiftCells = '<td class="day-label" style="color:var(--muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px">Shift</td>';
+  let statusCells = '<td class="day-label" style="color:var(--muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px">Status</td>';
+
+  weekDates.forEach((date, i) => {
+    const isToday = date === today;
+    const dayName = DAY_NAMES[i];
+    const dayNum = isoDayNum(date);
+    const monStr = isoMonStr(date);
+    const hdrClass = isToday ? 'today-hdr' : '';
+
+    thCells += `<th class="${hdrClass}" style="min-width:80px">
+      <div style="font-size:.72rem;font-weight:800">${dayName}</div>
+      <div style="font-size:.68rem;font-weight:600;opacity:.75">${dayNum} ${monStr}</div>
+    </th>`;
+
+    const sched = schedByDate[date];
+    const ci    = ciByDate[date];
+    const raw   = sched ? String(sched['Status']||'').trim() : '';
+    const isOff = !sched || /^off$/i.test(raw) || !raw;
+    const isLeave = !isOff && isLeaveStatus(raw);
+    const sHH = sched ? parseHHMM(sched['ShiftStart']||sched['shiftstart']||'') : null;
+    const eHH = sched ? parseHHMM(sched['ShiftEnd']  ||sched['shiftend']  ||'') : null;
+    const shiftStr = (sHH && eHH) ? `${fmtShift(sHH)}–${fmtShift(eHH)}` : (isOff ? 'OFF' : (isLeave ? raw.toUpperCase().slice(0,6) : '—'));
+    const tdClass = isToday ? 'day-today' : '';
+
+    shiftCells += `<td class="${tdClass}" style="font-family:monospace;font-size:.69rem;color:var(--muted)">${shiftStr}</td>`;
+
+    let badge = '';
+    if (date > today) {
+      if (isOff) badge = `<span class="b-o">OFF</span>`;
+      else if (isLeave) badge = `<span class="b-lv">${raw.toUpperCase().slice(0,5)}</span>`;
+      else badge = `<span class="b-nd">—</span>`;
+    } else if (isOff) {
+      badge = `<span class="b-o">OFF</span>`;
+    } else if (isLeave) {
+      badge = `<span class="b-lv">${raw.toUpperCase().slice(0,5)}</span>`;
+    } else if (ci) {
+      const st = String(ci['AttendanceStatus']||ci['attendancestatus']||'');
+      if (st==='Present')     badge=`<span class="b-p">P</span>`;
+      else if (st==='Late')   badge=`<span class="b-l">L</span>`;
+      else if (st==='Absent') badge=`<span class="b-a">A</span>`;
+      else                    badge=`<span class="b-nd">${st.slice(0,3)||'—'}</span>`;
+    } else {
+      badge = `<span class="b-nd">—</span>`;
+    }
+    statusCells += `<td class="${tdClass}">${badge}</td>`;
+  });
+
+  const sched0 = Object.values(schedByDate)[0];
+  const mgr  = sched0 ? String(sched0['Line Manager']||sched0['LineManager']||'—') : '—';
+  const clus = sched0 ? String(sched0['Cluster']||'—') : '—';
+  const w0label=`${isoDayNum(weekDates[0])} ${isoMonStr(weekDates[0])}`;
+  const w6={...parseIso(weekDates[6])};
+  const w6label=`${isoDayNum(weekDates[6])} ${isoMonStr(weekDates[6])} ${w6.y}`;
+
+  el.innerHTML = `<div class="week-roster">
+    <h3>📅 Weekly Roster — ${w0label} – ${w6label}</h3>
+    <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">
+      <strong style="color:var(--text)">${currentUser.fullName}</strong>
+      &nbsp;·&nbsp; Team Manager: <strong>${mgr}</strong>
+      &nbsp;·&nbsp; Cluster: <strong>${clus}</strong>
+    </div>
+    <table class="week-table">
+      <thead><tr>${thCells}</tr></thead>
+      <tbody>
+        <tr>${shiftCells}</tr>
+        <tr>${statusCells}</tr>
+      </tbody>
+    </table>
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;font-size:.68rem;color:var(--muted)">
+      <span><span class="b-p">P</span> Present</span>
+      <span><span class="b-l">L</span> Late</span>
+      <span><span class="b-a">A</span> Absent</span>
+      <span><span class="b-o">OFF</span> Rest Day</span>
+      <span><span class="b-lv">PTO</span> On Leave</span>
+      <span><span class="b-nd">—</span> No record</span>
+    </div>
+  </div>`;
+}
+
+// ── CHECK IN ──────────────────────────────────────────────────────
+async function doCheckIn() {
+  const btn=document.getElementById('btnCI'); if(btn) btn.disabled=true;
+  try {
+    const now=mnlNow(), today=mnlDate(now);
+    const sched=todaySched||{};
+    const rawS=sched['ShiftStart']||sched['shiftstart']||'';
+    const rawE=sched['ShiftEnd']  ||sched['shiftend']  ||'';
+    const startHH=parseHHMM(rawS)||'00:00';
+    const endHH  =parseHHMM(rawE)||'00:00';
+    const {startDt}=shiftDts(today,startHH,endHH);
+    const lateMin=Math.max(0,Math.round((now-startDt)/60000));
+    const status=lateMin>0?'Late':'Present';
+    const uniqueKey=`${currentUser.email}-${today.replace(/-/g,'')}`;
+
+    showOverlay('Recording check-in…');
+    const rowData = {
+      UniqueKey: uniqueKey,
+      Email: currentUser.email,
+      FullName: currentUser.fullName,
+      Date: today,
+      CheckInTime: now.toISOString(),
+      CheckOutTime: '',
+      ShiftStart: startHH,
+      ShiftEnd: endHH,
+      ScheduleStatus: String(sched['Status']||'Workday'),
+      AttendanceStatus: status,
+      LateMinutes: lateMin,
+      IsAutoCheckout: 'FALSE',
+      LineManager: String(sched['Line Manager']||sched['LineManager']||'—'),
+      Cluster: String(sched['Cluster']||'—'),
+      Month: String(sched['Month']||''),
+      Notes: '',
+      SubmittedBy: currentUser.email
+    };
+    await addExcelRow(CONFIG.checkInTable, rowData);
+
+    todayCI={UniqueKey:uniqueKey,Email:currentUser.email,FullName:currentUser.fullName,
+      Date:today,CheckInTime:now.toISOString(),CheckOutTime:'',
+      ShiftStart:startHH,ShiftEnd:endHH,ScheduleStatus:String(sched['Status']||'Workday'),
+      AttendanceStatus:status,LateMinutes:lateMin,IsAutoCheckout:'FALSE',
+      LineManager:String(sched['Line Manager']||'—'),Cluster:String(sched['Cluster']||'—'),
+      Notes:'',SubmittedBy:currentUser.email};
+    checkInRows.push({...todayCI});
+
+    hideOverlay();
+    showToast(`Checked in at ${fmtT(now)}${lateMin>0?' — '+lateMin+' min late':''}`,lateMin>0?'warn':'ok');
+    renderAttendance();
+    startElapsed();
+  } catch(e) {
+    hideOverlay();
+    showToast('Check-in failed: '+e.message,'err');
+    console.error(e);
+    if(btn) btn.disabled=false;
+  }
+}
+
+// ── CHECK OUT ─────────────────────────────────────────────────────
+async function doCheckOut(isAuto=false) {
+  if (!todayCI||!todayCI['CheckInTime']) return;
+  const btn=document.getElementById('btnCO');
+  if(btn&&!isAuto) btn.disabled=true;
+  try {
+    const now=mnlNow();
+    showOverlay(isAuto?'Auto check-out in progress…':'Recording check-out…');
+    const rowIndex = todayCI._rowIndex;
+    if (rowIndex !== undefined && rowIndex !== null && rowIndex !== '') {
+      await updateExcelRow(CONFIG.checkInTable, rowIndex, {
+        CheckOutTime: now.toISOString(),
+        IsAutoCheckout: isAuto ? 'TRUE' : 'FALSE'
+      });
+    } else {
+      // Fallback: find by UniqueKey and update
+      const allRows = await readExcelTable(CONFIG.checkInTable);
+      const found = allRows.find(r => String(r['UniqueKey']||'') === String(todayCI['UniqueKey']||''));
+      if (found && found._rowIndex !== undefined) {
+        await updateExcelRow(CONFIG.checkInTable, found._rowIndex, {
+          CheckOutTime: now.toISOString(),
+          IsAutoCheckout: isAuto ? 'TRUE' : 'FALSE'
+        });
+        todayCI._rowIndex = found._rowIndex;
+      }
+    }
+
+    todayCI['CheckOutTime']=now.toISOString();
+    todayCI['IsAutoCheckout']=isAuto?'TRUE':'FALSE';
+    const idx=checkInRows.findIndex(r=>String(r['UniqueKey']||'')===(todayCI['UniqueKey']||''));
+    if(idx>-1){checkInRows[idx]['CheckOutTime']=todayCI['CheckOutTime'];checkInRows[idx]['IsAutoCheckout']=todayCI['IsAutoCheckout'];}
+
+    clearInterval(elapsedTmr); elapsedTmr=null;
+    hideOverlay();
+    showToast(isAuto?`Auto-checkout at ${fmtT(now)} (${CONFIG.autoCheckoutMins} min past shift end)`:`Checked out at ${fmtT(now)}`,'ok');
+    renderAttendance();
+  } catch(e) {
+    hideOverlay();
+    showToast('Check-out failed: '+e.message,'err');
+    console.error(e);
+    if(btn&&!isAuto) btn.disabled=false;
+  }
+}
+
+// ── AUTO ABSENT ───────────────────────────────────────────────────
+async function autoAbsent() {
+  if (todayCI) return;
+  if (!todaySched) return;
+  const raw=String(todaySched['Status']||'').trim();
+  if (/^off$/i.test(raw)||!raw) return;
+  if (isLeaveStatus(raw)) return;
+  const startHH=parseHHMM(todaySched['ShiftStart']||'');
+  if (!startHH) return;
+  const today=mnlDate();
+  const endHH=parseHHMM(todaySched['ShiftEnd']||'')||'23:59';
+  const {startDt}=shiftDts(today,startHH,endHH);
+  const hours=(mnlNow()-startDt)/(1000*60*60);
+  if (hours<CONFIG.absentGraceHours) return;
+  try {
+    const sched=todaySched;
+    const uniqueKey=`${currentUser.email}-${today.replace(/-/g,'')}`;
+    const rowData = {
+      UniqueKey: uniqueKey,
+      Email: currentUser.email,
+      FullName: currentUser.fullName,
+      Date: today,
+      CheckInTime: '',
+      CheckOutTime: '',
+      ShiftStart: startHH,
+      ShiftEnd: endHH,
+      ScheduleStatus: String(sched['Status']||'Workday'),
+      AttendanceStatus: 'Absent',
+      LateMinutes: 0,
+      IsAutoCheckout: 'FALSE',
+      LineManager: String(sched['Line Manager']||sched['LineManager']||'—'),
+      Cluster: String(sched['Cluster']||'—'),
+      Month: String(sched['Month']||''),
+      Notes: 'Auto-marked absent',
+      SubmittedBy: 'system'
+    };
+    await addExcelRow(CONFIG.checkInTable, rowData);
+    todayCI={UniqueKey:uniqueKey,Email:currentUser.email,FullName:currentUser.fullName,
+      Date:today,CheckInTime:'',CheckOutTime:'',ShiftStart:startHH,ShiftEnd:endHH,
+      ScheduleStatus:String(sched['Status']||'Workday'),AttendanceStatus:'Absent',
+      LateMinutes:0,IsAutoCheckout:'FALSE',
+      LineManager:String(sched['Line Manager']||'—'),Cluster:String(sched['Cluster']||'—'),Notes:'Auto-marked absent'};
+    checkInRows.push({...todayCI});
+    renderAttendance();
+    showToast('You have been marked Absent — no check-in after '+CONFIG.absentGraceHours+' hours.','warn');
+  } catch(e) { console.error('Auto-absent error:',e); }
+}
+
+// ── AUTO LEAVE TAG ────────────────────────────────────────────────
+async function autoLeave() {
+  if (todayCI) return;
+  if (!todaySched) return;
+  const raw=String(todaySched['Status']||'').trim();
+  if (!isLeaveStatus(raw)) return;
+  const today=mnlDate();
+  const sched=todaySched;
+  const uniqueKey=`${currentUser.email}-${today.replace(/-/g,'')}`;
+  try {
+    const rowData = {
+      UniqueKey: uniqueKey,
+      Email: currentUser.email,
+      FullName: currentUser.fullName,
+      Date: today,
+      CheckInTime: '',
+      CheckOutTime: '',
+      ShiftStart: '',
+      ShiftEnd: '',
+      ScheduleStatus: raw,
+      AttendanceStatus: raw.toUpperCase().trim(),
+      LateMinutes: 0,
+      IsAutoCheckout: 'FALSE',
+      LineManager: String(sched['Line Manager']||sched['LineManager']||'—'),
+      Cluster: String(sched['Cluster']||'—'),
+      Month: String(sched['Month']||''),
+      Notes: 'Auto-tagged: '+raw.toUpperCase().trim(),
+      SubmittedBy: 'system'
+    };
+    await addExcelRow(CONFIG.checkInTable, rowData);
+    todayCI={
+      UniqueKey:uniqueKey, Email:currentUser.email, FullName:currentUser.fullName,
+      Date:today, CheckInTime:'', CheckOutTime:'',
+      ShiftStart:'', ShiftEnd:'',
+      ScheduleStatus:raw,
+      AttendanceStatus:raw.toUpperCase().trim(),
+      LateMinutes:0, IsAutoCheckout:'FALSE',
+      LineManager:String(sched['Line Manager']||sched['LineManager']||'—'),
+      Cluster:String(sched['Cluster']||'—'),
+      Notes:'Auto-tagged: '+raw.toUpperCase().trim()
+    };
+    checkInRows.push({...todayCI});
+    console.log('Auto-leave tagged:',raw.toUpperCase().trim());
+  } catch(e){ console.error('Auto-leave error:',e); }
+}
+
+// ── AUTO CHECKOUT ─────────────────────────────────────────────────
+async function autoCheckoutCheck() {
+  if (!todayCI||!todayCI['CheckInTime']||todayCI['CheckOutTime']) return;
+  if (!todaySched) return;
+  const endHH=parseHHMM(todaySched['ShiftEnd']||'');
+  if (!endHH) return;
+  const startHH=parseHHMM(todaySched['ShiftStart']||'')||'00:00';
+  const today=String(todayCI['Date']||'').slice(0,10)||mnlDate();
+  const {endDt}=shiftDts(today,startHH,endHH);
+  const minsAfter=(mnlNow()-endDt)/60000;
+  if (minsAfter>=CONFIG.autoCheckoutMins) await doCheckOut(true);
+}
+
+// ── TIMERS ────────────────────────────────────────────────────────
+function startClock() {
+  if (clockTmr) clearInterval(clockTmr);
+  const tick=()=>{
+    const ts=mnlNow().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true,timeZone:MNL});
+    document.getElementById('headerClock').textContent=ts;
+    const lc=document.getElementById('liveClock');
+    if(lc) lc.textContent=ts;
+  };
+  tick(); clockTmr=setInterval(tick,1000);
+}
+
+function startElapsed() {
+  if(elapsedTmr){clearInterval(elapsedTmr);elapsedTmr=null;}
+  if(!todayCI||!todayCI['CheckInTime']) return;
+  const ciTime=new Date(todayCI['CheckInTime']);
+  const tick=()=>{
+    const el=document.getElementById('elapsedTime'); if(!el) return;
+    const diff=mnlNow()-ciTime;
+    if(diff<0){el.textContent='0h 0m 0s';return;}
+    const h=Math.floor(diff/3600000),m=Math.floor((diff%3600000)/60000),s=Math.floor((diff%60000)/1000);
+    el.textContent=`${h}h ${m}m ${s}s`;
+  };
+  tick(); elapsedTmr=setInterval(tick,1000);
+}
+
+function startAutoCheckers() {
+  if(autoTmr) clearInterval(autoTmr);
+  const check=()=>{
+    autoLeave();
+    autoAbsent();
+    autoCheckoutCheck();
+  };
+  check();
+  autoTmr=setInterval(check,60000);
+  document.removeEventListener('visibilitychange',_visChk);
+  _visChk=()=>{if(!document.hidden&&currentUser)check();};
+  document.addEventListener('visibilitychange',_visChk);
+}
+// ── RENDER: MY HISTORY ────────────────────────────────────────────
+function renderHistory() {
+  const email=(currentUser?.email||'').toLowerCase();
+  const monthFlt=document.getElementById('hist-month')?.value||'';
+  const statusFlt=document.getElementById('hist-status')?.value||'';
+  let rows=checkInRows.filter(r=>String(r['Email']||r['email']||'').toLowerCase().trim()===email);
+  const months=[...new Set(rows.map(r=>String(r['Date']||r['date']||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const mEl=document.getElementById('hist-month');
+  if(mEl){const cv=mEl.value;mEl.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${m}"${m===cv?' selected':''}>${fmtMonth(m)}</option>`).join('');}
+  if(monthFlt) rows=rows.filter(r=>String(r['Date']||r['date']||'').startsWith(monthFlt));
+  if(statusFlt) rows=rows.filter(r=>(r['AttendanceStatus']||r['attendancestatus']||'')=== statusFlt);
+  rows.sort((a,b)=>String(b['Date']||'').localeCompare(String(a['Date']||'')));
+  document.getElementById('histCount').textContent=`(${rows.length} records)`;
+  const tb=document.getElementById('histBody');
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="8"><div class="state-box"><div class="state-title">No records found</div></div></td></tr>`;return;}
+  tb.innerHTML=rows.map(r=>{
+    const d=String(r['Date']||r['date']||'').slice(0,10);
+    const st=r['AttendanceStatus']||r['attendancestatus']||'';
+    const sc=st==='Present'?'b-present':st==='Late'?'b-late':st==='Absent'?'b-absent':'b-off';
+    const sHH=parseHHMM(r['ShiftStart']||r['shiftstart']||'');
+    const eHH=parseHHMM(r['ShiftEnd']  ||r['shiftend']  ||'');
+    const shift=(sHH&&eHH)?`${fmtShift(sHH)}–${fmtShift(eHH)}`:'—';
+    const ciT=r['CheckInTime'] ?new Date(r['CheckInTime']) :null;
+    const coT=r['CheckOutTime']?new Date(r['CheckOutTime']):null;
+    const lm=parseInt(r['LateMinutes']||r['lateminutes']||0,10);
+    const isAuto=(r['IsAutoCheckout']||r['isautoCheckout']||'').toString().toUpperCase()==='TRUE';
+    return `<tr>
+      <td>${d?fmtDate(d):'—'}</td>
+      <td>${d?fmtDay(d):'—'}</td>
+      <td style="font-family:monospace;font-size:.75rem;white-space:nowrap">${shift}</td>
+      <td>${ciT?fmtT(ciT):'—'}</td>
+      <td>${coT?fmtT(coT):'—'}</td>
+      <td><span class="badge ${sc}">${st||'—'}</span></td>
+      <td style="text-align:center">${lm>0?`<span style="color:var(--orange);font-weight:700">${lm}</span>`:'—'}</td>
+      <td>${coT?(isAuto?`<span class="badge b-auto">🔄 Auto</span>`:`<span class="badge b-manual">✅ Manual</span>`):'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── RENDER: TEAM VIEW ─────────────────────────────────────────────
+function populateTeamDropdowns() {
+  const mgrs=[...new Set(scheduleRows.map(r=>String(r['Line Manager']||r['LineManager']||'—')).filter(v=>v&&v!=='—'))].sort();
+  const cluS=[...new Set(scheduleRows.map(r=>String(r['Cluster']||'—')).filter(v=>v&&v!=='—'))].sort();
+  const mEl=document.getElementById('team-manager');
+  if(mEl){const cv=mEl.value;mEl.innerHTML='<option value="">All Managers</option>'+mgrs.map(m=>`<option${m===cv?' selected':''}>${m}</option>`).join('');}
+  const cEl=document.getElementById('team-cluster');
+  if(cEl){const cv=cEl.value;cEl.innerHTML='<option value="">All Clusters</option>'+cluS.map(c=>`<option${c===cv?' selected':''}>${c}</option>`).join('');}
+}
+
+function renderTeam() {
+  const dateVal  =document.getElementById('team-date')?.value||mnlDate();
+  const statusFlt=document.getElementById('team-status')?.value||'';
+  const mgrFlt   =document.getElementById('team-manager')?.value||'';
+  const cluFlt   =document.getElementById('team-cluster')?.value||'';
+  const srch     =(document.getElementById('team-search')?.value||'').toLowerCase();
+  document.getElementById('teamDateLabel').textContent=`${fmtDate(dateVal)} — ${fmtDay(dateVal)}`;
+
+  const myEmail=(currentUser?.email||'').toLowerCase();
+  let daySched=scheduleRows.filter(r=>{
+    const rd=String(r['Shift Date']||r['ShiftDate']||'').slice(0,10);
+    if(rd!==dateVal) return false;
+    if(userRole==='manager'){const mgr=String(r['Line Manager']||r['LineManager']||'').toLowerCase().trim();return mgr===myEmail;}
+    return true;
+  });
+  if(mgrFlt) daySched=daySched.filter(r=>String(r['Line Manager']||r['LineManager']||'')===mgrFlt);
+  if(cluFlt) daySched=daySched.filter(r=>String(r['Cluster']||'')===cluFlt);
+  if(srch)   daySched=daySched.filter(r=>(String(r['Full Name']||r['FullName']||'')+String(r['Email']||'')).toLowerCase().includes(srch));
+
+  const ciMap={};
+  checkInRows.filter(r=>String(r['Date']||r['date']||'').slice(0,10)===dateVal)
+    .forEach(r=>{ciMap[String(r['Email']||r['email']||'').toLowerCase().trim()]=r;});
+
+  const now=mnlNow();
+  const rows=daySched.map(s=>{
+    const re=String(s['Email']||'').toLowerCase().trim();
+    const ci=ciMap[re]||null;
+    const sStatus=String(s['Status']||'').trim();
+    const isOff=/^off$/i.test(sStatus)||!sStatus;
+    const isLeave=!isOff&&isLeaveStatus(sStatus);
+    const sHH=parseHHMM(s['ShiftStart']||s['shiftstart']||'');
+    const eHH=parseHHMM(s['ShiftEnd']  ||s['shiftend']  ||'');
+    let dispStatus='';
+    if(isOff){dispStatus='Rest Day';}
+    else if(isLeave){dispStatus=sStatus.toUpperCase().trim();}
+    else if(ci){dispStatus=ci['AttendanceStatus']||ci['attendancestatus']||'Present';}
+    else if(sHH){
+      const {startDt}=shiftDts(dateVal,sHH,eHH||'23:59');
+      const hrs=(now-startDt)/(1000*60*60);
+      if(dateVal>mnlDate())       dispStatus='Upcoming';
+      else if(hrs>=CONFIG.absentGraceHours) dispStatus='Absent';
+      else if(hrs>0)              dispStatus='No Check-in';
+      else                        dispStatus='Not Started';
+    } else dispStatus='No Check-in';
+
+    return {
+      name:String(s['Full Name']||s['FullName']||re),email:re,
+      manager:String(s['Line Manager']||s['LineManager']||'—'),
+      cluster:String(s['Cluster']||'—'),
+      shift:(sHH&&eHH)?`${fmtShift(sHH)}–${fmtShift(eHH)}`:(isOff?'Off':(isLeave?sStatus.toUpperCase().slice(0,6):'—')),
+      status:dispStatus,
+      ciTime:ci?String(ci['CheckInTime']||ci['checkInTime']||''):'',
+      coTime:ci?String(ci['CheckOutTime']||ci['checkOutTime']||''):'',
+      lateMin:parseInt(ci?.['LateMinutes']||ci?.['lateMinutes']||0,10),
+      isAuto:(ci?.['IsAutoCheckout']||ci?.['isAutoCheckout']||'').toString().toUpperCase()==='TRUE'
+    };
+  });
+
+  const kp={P:0,L:0,A:0,R:0,N:0,LV:0};
+  rows.forEach(r=>{
+    if(r.status==='Present')kp.P++;
+    else if(r.status==='Late')kp.L++;
+    else if(r.status==='Absent')kp.A++;
+    else if(r.status==='Rest Day')kp.R++;
+    else if(isLeaveStatus(r.status))kp.LV++;
+    else kp.N++;
+  });
+  const tot=rows.length||1;
+  document.getElementById('teamKpis').innerHTML=`
+    <div class="kpi-card green"><div class="kpi-icon">✅</div><div class="kpi-val">${kp.P}</div><div class="kpi-label">Present</div><div class="kpi-sub">${Math.round(kp.P/tot*100)}%</div></div>
+    <div class="kpi-card amber"><div class="kpi-icon">⏰</div><div class="kpi-val">${kp.L}</div><div class="kpi-label">Late</div><div class="kpi-sub">${Math.round(kp.L/tot*100)}%</div></div>
+    <div class="kpi-card red"  ><div class="kpi-icon">❌</div><div class="kpi-val">${kp.A}</div><div class="kpi-label">Absent</div><div class="kpi-sub">${Math.round(kp.A/tot*100)}%</div></div>
+    <div class="kpi-card teal" ><div class="kpi-icon">🔴</div><div class="kpi-val">${kp.N}</div><div class="kpi-label">No Check-in</div><div class="kpi-sub">${Math.round(kp.N/tot*100)}%</div></div>
+    <div class="kpi-card grey" ><div class="kpi-icon">🌴</div><div class="kpi-val">${kp.R}</div><div class="kpi-label">Rest Day</div><div class="kpi-sub">${Math.round(kp.R/tot*100)}%</div></div>
+    <div class="kpi-card amber"><div class="kpi-icon">🏖️</div><div class="kpi-val">${kp.LV}</div><div class="kpi-label">On Leave</div><div class="kpi-sub">${Math.round(kp.LV/tot*100)}%</div></div>`;
+
+  const view=statusFlt?rows.filter(r=>r.status===statusFlt):rows;
+  document.getElementById('teamCount').textContent=`(${view.length} of ${rows.length} agents)`;
+  const tb=document.getElementById('teamBody');
+  if(!view.length){tb.innerHTML=`<tr><td colspan="8"><div class="state-box"><div class="state-title">No records for this date/filter</div></div></td></tr>`;return;}
+  tb.innerHTML=view.map(r=>{
+    const sc=r.status==='Present'?'b-present':r.status==='Late'?'b-late':r.status==='Absent'?'b-absent':r.status==='Rest Day'?'b-off':isLeaveStatus(r.status)?'b-pto':'b-noci';
+    return `<tr>
+      <td><strong>${r.name}</strong></td>
+      <td style="color:var(--muted)">${r.manager}</td>
+      <td style="color:var(--muted)">${r.cluster}</td>
+      <td style="font-family:monospace;font-size:.74rem;white-space:nowrap">${r.shift}</td>
+      <td><span class="badge ${sc}">${r.status}</span></td>
+      <td>${r.ciTime?fmtT(new Date(r.ciTime)):'—'}</td>
+      <td>${r.coTime?fmtT(new Date(r.coTime))+' '+(r.isAuto?'<span class="badge b-auto" style="font-size:.6rem">🔄 Auto</span>':'<span class="badge b-manual" style="font-size:.6rem">✅ Manual</span>'):'—'}</td>
+      <td style="text-align:center">${r.lateMin>0?`<span style="color:var(--orange);font-weight:700">${r.lateMin}</span>`:'—'}</td>
+    </tr>`;
+  }).join('');
+}
+// ── TABS ──────────────────────────────────────────────────────────
+function switchTab(name) {
+  ['attendance','history','team','summary'].forEach(t=>{
+    document.getElementById('tab-'+t)?.classList.toggle('active',t===name);
+    document.getElementById('tabBtn-'+t)?.classList.toggle('active',t===name);
+  });
+  if(name==='history')    renderHistory();
+  if(name==='team')       renderTeam();
+  if(name==='summary')    renderSummary();
+  if(name==='attendance'){startElapsed();renderWeeklyAgentView();}
+}
+
+// ── EXPORT ────────────────────────────────────────────────────────
+function exportMyCSV() {
+  const email=(currentUser?.email||'').toLowerCase();
+  const rows=checkInRows.filter(r=>String(r['Email']||r['email']||'').toLowerCase()===email);
+  const H=['Date','Day','Shift','CheckIn','CheckOut','Status','LateMin','AutoCheckout'];
+  const B=rows.map(r=>{
+    const d=String(r['Date']||r['date']||'').slice(0,10);
+    const sHH=parseHHMM(r['ShiftStart']||''),eHH=parseHHMM(r['ShiftEnd']||'');
+    return [d,d?fmtDay(d):'—',(sHH&&eHH)?`${fmtShift(sHH)}-${fmtShift(eHH)}`:'—',
+      r['CheckInTime']?fmtT(new Date(r['CheckInTime'])):'',
+      r['CheckOutTime']?fmtT(new Date(r['CheckOutTime'])):'',
+      r['AttendanceStatus']||'',r['LateMinutes']||0,
+      (r['IsAutoCheckout']||'').toUpperCase()==='TRUE'?'Yes':'No'
+    ].map(v=>`"${(v??'').toString().replace(/"/g,'""')}"`).join(',');
+  });
+  dl([H.join(','),...B].join('\n'),'MyAttendance_'+mnlDate()+'.csv');
+}
+function exportTeamCSV() {
+  const tb=document.getElementById('teamBody');
+  const rows=[...tb.querySelectorAll('tr')].map(tr=>[...tr.querySelectorAll('td')].map(td=>td.innerText.trim()).join(',')).filter(Boolean);
+  dl(['Full Name,Line Manager,Cluster,Shift,Status,Check In,Check Out,Late (min)',...rows].join('\n'),'TeamAttendance_'+(document.getElementById('team-date')?.value||mnlDate())+'.csv');
+}
+function dl(csv,fname){const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download=fname;a.click();}
+
+// ── SUMMARY TAB ───────────────────────────────────────────────────
+let _sumChartStatus=null, _sumChartTrend=null, _sumChartCluster=null, _sumChartManager=null;
+const CHART_COLORS = ['#6c3fc5','#27ae60','#e67e22','#c0392b','#2980b9','#16a085','#8e44ad','#d35400','#27ae60','#2c3e50'];
+
+function populateSummaryDropdowns() {
+  const mgrs=[...new Set(checkInRows.map(r=>String(r['LineManager']||r['linemanager']||r['Line Manager']||'—')).filter(v=>v&&v!=='—'))].sort();
+  const cluS=[...new Set(checkInRows.map(r=>String(r['Cluster']||r['cluster']||'—')).filter(v=>v&&v!=='—'))].sort();
+  const months=[...new Set(checkInRows.map(r=>String(r['Date']||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const mEl=document.getElementById('sum-manager');
+  if(mEl){const cv=mEl.value;mEl.innerHTML='<option value="">All Line Managers</option>'+mgrs.map(m=>`<option${m===cv?' selected':''}>${m}</option>`).join('');}
+  const cEl=document.getElementById('sum-cluster');
+  if(cEl){const cv=cEl.value;cEl.innerHTML='<option value="">All Clusters</option>'+cluS.map(c=>`<option${c===cv?' selected':''}>${c}</option>`).join('');}
+  const monEl=document.getElementById('sum-month');
+  if(monEl){const cv=monEl.value;monEl.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${m}"${m===cv?' selected':''}>${fmtMonth(m)}</option>`).join('');}
+}
+
+function clearSummaryFilters(){
+  ['sum-month','sum-status','sum-manager','sum-cluster','sum-search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('sum-from').value='';
+  document.getElementById('sum-to').value='';
+  renderSummary();
+}
+
+function renderSummary() {
+  populateSummaryDropdowns();
+  const monthFlt  = document.getElementById('sum-month')?.value||'';
+  const fromFlt   = document.getElementById('sum-from')?.value||'';
+  const toFlt     = document.getElementById('sum-to')?.value||'';
+  const statusFlt = document.getElementById('sum-status')?.value||'';
+  const mgrFlt    = document.getElementById('sum-manager')?.value||'';
+  const cluFlt    = document.getElementById('sum-cluster')?.value||'';
+  const srch      = (document.getElementById('sum-search')?.value||'').toLowerCase();
+  const myEmail   = (currentUser?.email||'').toLowerCase();
+
+  let rows = checkInRows.filter(r => {
+    if (userRole==='manager') {
+      const lm=String(r['LineManager']||r['linemanager']||r['Line Manager']||'').toLowerCase().trim();
+      if(lm!==myEmail) return false;
+    }
+    return true;
+  });
+
+  if (monthFlt)  rows=rows.filter(r=>String(r['Date']||'').startsWith(monthFlt));
+  if (fromFlt)   rows=rows.filter(r=>String(r['Date']||'').slice(0,10)>=fromFlt);
+  if (toFlt)     rows=rows.filter(r=>String(r['Date']||'').slice(0,10)<=toFlt);
+  if (mgrFlt)    rows=rows.filter(r=>String(r['LineManager']||r['linemanager']||r['Line Manager']||'')=== mgrFlt);
+  if (cluFlt)    rows=rows.filter(r=>String(r['Cluster']||r['cluster']||'')=== cluFlt);
+  if (statusFlt) rows=rows.filter(r=>String(r['AttendanceStatus']||r['attendancestatus']||'')=== statusFlt);
+  if (srch)      rows=rows.filter(r=>(String(r['FullName']||'')+String(r['Email']||'')+String(r['LineManager']||'')+String(r['Cluster']||'')).toLowerCase().includes(srch));
+
+  const cnt={Present:0,Late:0,'Half Day':0,Absent:0,'On PTO':0,MAT:0,LOA:0};
+  const ciKeySet=new Set();
+  rows.forEach(r=>{
+    const em=String(r['Email']||r['email']||'').toLowerCase().trim();
+    const dt=String(r['Date']||r['date']||'').slice(0,10);
+    if(em&&dt) ciKeySet.add(`${em}|${dt}`);
+    const s=String(r['AttendanceStatus']||r['attendancestatus']||'');
+    if(cnt.hasOwnProperty(s)) cnt[s]++;
+    else if(s==='PTO'||/^(VL|EL|HL|BL|SIL|SL|WFH|SP)$/i.test(s)) cnt['On PTO']++;
+    else if(/^MAT/i.test(s)) cnt['MAT']++;
+    else if(/^LOA/i.test(s)) cnt['LOA']++;
+  });
+
+  let nLeaveExtra=0;
+  scheduleRows.forEach(s=>{
+    if(userRole==='manager'){
+      const lm=String(s['Line Manager']||s['LineManager']||'').toLowerCase().trim();
+      if(lm!==myEmail) return;
+    }
+    const sDate=String(s['ShiftDate']||s['Shift Date']||'').slice(0,10);
+    if(!sDate) return;
+    if(monthFlt&&!sDate.startsWith(monthFlt)) return;
+    if(fromFlt&&sDate<fromFlt) return;
+    if(toFlt&&sDate>toFlt) return;
+    if(mgrFlt&&String(s['Line Manager']||s['LineManager']||'')!==mgrFlt) return;
+    if(cluFlt&&String(s['Cluster']||'')!==cluFlt) return;
+    const sEmail=String(s['Email']||s['email']||'').toLowerCase().trim();
+    if(!sEmail) return;
+    const key=`${sEmail}|${sDate}`;
+    if(ciKeySet.has(key)) return;
+    const raw=String(s['Status']||'').trim();
+    if(!isLeaveStatus(raw)) return;
+    const u=raw.toUpperCase().trim();
+    if(/^MAT/.test(u)) cnt['MAT']++;
+    else if(/^LOA/.test(u)) cnt['LOA']++;
+    else cnt['On PTO']++;
+    nLeaveExtra++;
+  });
+
+  const now=mnlNow();
+  scheduleRows.forEach(s=>{
+    if(userRole==='manager'){
+      const lm=String(s['Line Manager']||s['LineManager']||'').toLowerCase().trim();
+      if(lm!==myEmail) return;
+    }
+    const sDate=String(s['ShiftDate']||s['Shift Date']||'').slice(0,10);
+    if(!sDate||sDate>=mnlDate()) return;
+    if(monthFlt&&!sDate.startsWith(monthFlt)) return;
+    if(fromFlt&&sDate<fromFlt) return;
+    if(toFlt&&sDate>toFlt) return;
+    if(mgrFlt&&String(s['Line Manager']||s['LineManager']||'')!==mgrFlt) return;
+    if(cluFlt&&String(s['Cluster']||'')!==cluFlt) return;
+    const sEmail=String(s['Email']||s['email']||'').toLowerCase().trim();
+    if(!sEmail) return;
+    const key=`${sEmail}|${sDate}`;
+    if(ciKeySet.has(key)) return;
+    const raw=String(s['Status']||'').trim();
+    if(/^off$/i.test(raw)||!raw||isLeaveStatus(raw)) return;
+    cnt['Absent']++;
+    nLeaveExtra++;
+  });
+
+  const nTotal=rows.length+nLeaveExtra, nAttended=cnt.Present+cnt.Late;
+  const rate=nTotal>0?Math.round(nAttended/nTotal*100):0;
+
+  document.getElementById('sumKpis').innerHTML=`
+    <div class="kpi-card" style="border-top:4px solid var(--primary)">
+      <div class="kpi-icon">📈</div><div class="kpi-val" style="color:var(--primary)">${rate}%</div>
+      <div class="kpi-label">Attendance Rate</div><div class="kpi-sub" style="color:var(--primary)">Present + Late</div></div>
+    <div class="kpi-card green">
+      <div class="kpi-icon">🟢</div><div class="kpi-val">${cnt.Present}</div>
+      <div class="kpi-label">Present</div><div class="kpi-sub">${nTotal?Math.round(cnt.Present/nTotal*100):0}%</div></div>
+    <div class="kpi-card amber">
+      <div class="kpi-icon">⏰</div><div class="kpi-val">${cnt.Late}</div>
+      <div class="kpi-label">Late</div><div class="kpi-sub">${nTotal?Math.round(cnt.Late/nTotal*100):0}%</div></div>
+    <div class="kpi-card" style="border-top:4px solid #0891b2">
+      <div class="kpi-icon">🌓</div><div class="kpi-val" style="color:#0891b2">${cnt['Half Day']}</div>
+      <div class="kpi-label">Half Day</div><div class="kpi-sub" style="color:#0891b2">${nTotal?Math.round(cnt['Half Day']/nTotal*100):0}%</div></div>
+    <div class="kpi-card red">
+      <div class="kpi-icon">❌</div><div class="kpi-val">${cnt.Absent}</div>
+      <div class="kpi-label">Absent</div><div class="kpi-sub">${nTotal?Math.round(cnt.Absent/nTotal*100):0}%</div></div>
+    <div class="kpi-card" style="border-top:4px solid var(--accent)">
+      <div class="kpi-icon">🏖️</div><div class="kpi-val" style="color:var(--accent)">${cnt['On PTO']}</div>
+      <div class="kpi-label">On PTO</div><div class="kpi-sub" style="color:var(--accent)">${nTotal?Math.round(cnt['On PTO']/nTotal*100):0}%</div></div>
+    <div class="kpi-card" style="border-top:4px solid #db2777">
+      <div class="kpi-icon">🤱</div><div class="kpi-val" style="color:#db2777">${cnt.MAT}</div>
+      <div class="kpi-label">MAT Leave</div><div class="kpi-sub" style="color:#db2777">${nTotal?Math.round(cnt.MAT/nTotal*100):0}%</div></div>
+    <div class="kpi-card" style="border-top:4px solid #ea580c">
+      <div class="kpi-icon">📋</div><div class="kpi-val" style="color:#ea580c">${cnt.LOA}</div>
+      <div class="kpi-label">LOA</div><div class="kpi-sub" style="color:#ea580c">${nTotal?Math.round(cnt.LOA/nTotal*100):0}%</div></div>`;
+
+  function destroyChart(ref) { if(ref){ref.destroy();} return null; }
+
+  const sc=document.getElementById('sumChartStatus');
+  if(sc){
+    _sumChartStatus=destroyChart(_sumChartStatus);
+    _sumChartStatus=new Chart(sc.getContext('2d'),{
+      type:'doughnut',
+      data:{labels:['Present','Late','Half Day','Absent','On PTO','MAT','LOA'],
+        datasets:[{data:[cnt.Present,cnt.Late,cnt['Half Day'],cnt.Absent,cnt['On PTO'],cnt.MAT,cnt.LOA],
+          backgroundColor:['#27ae60','#e67e22','#0891b2','#c0392b','#6c3fc5','#db2777','#ea580c'],
+          borderWidth:2,borderColor:'#fff'}]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'right',labels:{font:{size:11},padding:10}}}}
+    });
+  }
+
+  const tc=document.getElementById('sumChartTrend');
+  if(tc){
+    const byDate={};
+    rows.forEach(r=>{
+      const d=String(r['Date']||'').slice(0,10); if(!d)return;
+      if(!byDate[d])byDate[d]={a:0,l:0};
+      const s=String(r['AttendanceStatus']||'');
+      if(s==='Absent')byDate[d].a++;
+      else if(s==='Late')byDate[d].l++;
+    });
+    const dates=Object.keys(byDate).sort().slice(-21);
+    _sumChartTrend=destroyChart(_sumChartTrend);
+    _sumChartTrend=new Chart(tc.getContext('2d'),{
+      type:'line',
+      data:{
+        labels:dates.map(d=>new Date(d+'T00:00:00').toLocaleDateString('en-PH',{month:'numeric',day:'numeric'})),
+        datasets:[
+          {label:'Absent',data:dates.map(d=>byDate[d].a),borderColor:'#c0392b',backgroundColor:'rgba(192,57,43,.1)',tension:.35,fill:true,pointRadius:4,pointBackgroundColor:'#c0392b'},
+          {label:'Late',  data:dates.map(d=>byDate[d].l),borderColor:'#e67e22',backgroundColor:'rgba(230,126,34,.1)',tension:.35,fill:true,pointRadius:4,pointBackgroundColor:'#e67e22'}
+        ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        scales:{y:{beginAtZero:true,ticks:{stepSize:1,font:{size:10}}},x:{ticks:{font:{size:10}}}},
+        plugins:{legend:{position:'top',labels:{font:{size:11}}}}}
+    });
+  }
+
+  const cc=document.getElementById('sumChartCluster');
+  if(cc){
+    const cMap={};
+    rows.filter(r=>String(r['AttendanceStatus']||'')==='Absent').forEach(r=>{
+      const c=String(r['Cluster']||r['cluster']||'Unknown');
+      cMap[c]=(cMap[c]||0)+1;
+    });
+    const cLabels=Object.keys(cMap).sort((a,b)=>cMap[b]-cMap[a]);
+    _sumChartCluster=destroyChart(_sumChartCluster);
+    _sumChartCluster=new Chart(cc.getContext('2d'),{
+      type:'bar',
+      data:{labels:cLabels,datasets:[{label:'Absences',data:cLabels.map(k=>cMap[k]),
+        backgroundColor:cLabels.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]),
+        borderRadius:4}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        scales:{x:{beginAtZero:true,ticks:{stepSize:1,font:{size:10}}},y:{ticks:{font:{size:10}}}},
+        plugins:{legend:{display:false}}}
+    });
+  }
+
+  const mc=document.getElementById('sumChartManager');
+  if(mc){
+    const mMap={};
+    rows.filter(r=>String(r['AttendanceStatus']||'')==='Absent').forEach(r=>{
+      const m=String(r['LineManager']||r['linemanager']||r['Line Manager']||'Unknown');
+      mMap[m]=(mMap[m]||0)+1;
+    });
+    const mLabels=Object.keys(mMap).sort((a,b)=>mMap[b]-mMap[a]).slice(0,12);
+    _sumChartManager=destroyChart(_sumChartManager);
+    _sumChartManager=new Chart(mc.getContext('2d'),{
+      type:'bar',
+      data:{labels:mLabels,datasets:[{label:'Absences',data:mLabels.map(k=>mMap[k]),
+        backgroundColor:mLabels.map((_,i)=>CHART_COLORS[i%CHART_COLORS.length]),
+        borderRadius:4}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        scales:{x:{beginAtZero:true,ticks:{stepSize:1,font:{size:10}}},y:{ticks:{font:{size:10}}}},
+        plugins:{legend:{display:false}}}
+    });
+  }
+
+  const agentMap={};
+  rows.forEach(r=>{
+    const em=String(r['Email']||r['email']||'').toLowerCase().trim(); if(!em)return;
+    if(!agentMap[em]) agentMap[em]={
+      name:String(r['FullName']||r['fullname']||r['Full Name']||em),
+      manager:String(r['LineManager']||r['linemanager']||r['Line Manager']||'—'),
+      cluster:String(r['Cluster']||r['cluster']||'—'),
+      p:0,l:0,hd:0,a:0,pto:0,mat:0,loa:0,total:0
+    };
+    const s=String(r['AttendanceStatus']||r['attendancestatus']||'');
+    agentMap[em].total++;
+    if(s==='Present')      agentMap[em].p++;
+    else if(s==='Late')    agentMap[em].l++;
+    else if(s==='Half Day')agentMap[em].hd++;
+    else if(s==='Absent')  agentMap[em].a++;
+    else if(s==='On PTO'||s==='PTO') agentMap[em].pto++;
+    else if(s==='MAT')     agentMap[em].mat++;
+    else if(s==='LOA')     agentMap[em].loa++;
+  });
+  const agents=Object.values(agentMap).sort((a,b)=>b.a-a.a||a.name.localeCompare(b.name));
+  document.getElementById('sumCount').textContent=`(${agents.length} agents)`;
+  const tb=document.getElementById('sumBody');
+  if(!agents.length){tb.innerHTML=`<tr><td colspan="11"><div class="state-box"><div class="state-title">No records for selected filters</div></div></td></tr>`;return;}
+  tb.innerHTML=agents.map(a=>{
+    const ar=a.total>0?Math.round((a.p+a.l)/a.total*100):0;
+    const arc=ar>=90?'var(--green)':ar>=75?'var(--orange)':'var(--red)';
+    const num=(n,c)=>n>0?`<span style="color:${c};font-weight:700">${n}</span>`:`<span style="color:var(--muted)">${n}</span>`;
+    return `<tr>
+      <td><strong>${a.name}</strong></td>
+      <td style="color:var(--muted);font-size:.75rem">${a.manager}</td>
+      <td style="color:var(--muted);font-size:.75rem">${a.cluster}</td>
+      <td style="text-align:center">${num(a.p,'var(--green)')}</td>
+      <td style="text-align:center">${num(a.l,'var(--orange)')}</td>
+      <td style="text-align:center">${num(a.hd,'#0891b2')}</td>
+      <td style="text-align:center">${num(a.a,'var(--red)')}</td>
+      <td style="text-align:center">${num(a.pto,'var(--accent)')}</td>
+      <td style="text-align:center">${num(a.mat,'#db2777')}</td>
+      <td style="text-align:center">${num(a.loa,'#ea580c')}</td>
+      <td style="text-align:center"><span style="color:${arc};font-weight:800">${ar}%</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function exportSummaryCSV() {
+  const tb=document.getElementById('sumBody');
+  const H='Full Name,Line Manager,Cluster,Present,Late,Half Day,Absent,On PTO,MAT,LOA,Att Rate';
+  const rows=[...tb.querySelectorAll('tr')].map(tr=>[...tr.querySelectorAll('td')].map(td=>'"'+td.innerText.trim().replace(/"/g,'""')+'"').join(',')).filter(Boolean);
+  const csv=[H,...rows].join('\n');
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='AttendanceSummary_'+mnlDate()+'.csv';a.click();
+}
+
+// ── MISC UTILS ────────────────────────────────────────────────────
+function clearTeamFilters(){['team-status','team-manager','team-cluster','team-search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});document.getElementById('team-date').value=mnlDate();renderTeam();}
+function updateBadge(s){const el=document.getElementById('statusBadge');if(s==='live'){el.className='badge-live';el.textContent='● LIVE';}else if(s==='error'){el.className='badge-error';el.textContent='✕ ERROR';}else{el.className='badge-loading';el.textContent='⟳ LOADING';}}
+function showOverlay(m){document.getElementById('overlay').style.display='flex';document.getElementById('overlayMsg').textContent=m||'Loading…';}
+function hideOverlay(){document.getElementById('overlay').style.display='none';}
+function showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');setTimeout(()=>{t.className='toast';},5000);}
+
+// ── PAGE LOAD ─────────────────────────────────────────────────────
+function showLoginScreen(errorMsg) {
+  hideOverlay();
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('mainDash').style.display   = 'none';
+  updateBadge('loading');
+  if (errorMsg) {
+    const el = document.getElementById('loginError');
+    if (el) { el.textContent = errorMsg; el.style.display = 'block'; }
+  }
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  // ── file:// protocol check ──────────────────────────────────────
+  if (window.location.protocol === 'file:') {
+    showLoginScreen('');
+    const el = document.getElementById('loginError');
+    if (el) {
+      el.style.display = 'block';
+      el.style.background = '#fff3cd';
+      el.style.border = '1px solid #f0ad4e';
+      el.style.borderRadius = '8px';
+      el.style.padding = '12px 14px';
+      el.style.color = '#664d03';
+      el.style.textAlign = 'left';
+      el.innerHTML = `
+        <strong>⚠️ Cannot sign in from a local file</strong><br>
+        Microsoft authentication requires the page to be served over HTTP.<br><br>
+        <strong>How to fix (pick one):</strong><br>
+        <span style="font-family:monospace;background:#fff8e1;padding:2px 6px;border-radius:3px;font-size:.8rem">Option 1</span>
+        &nbsp;Open in <b>VS Code</b> → install <b>Live Server</b> extension → right-click this file → <b>"Open with Live Server"</b><br><br>
+        <span style="font-family:monospace;background:#fff8e1;padding:2px 6px;border-radius:3px;font-size:.8rem">Option 2</span>
+        &nbsp;Open terminal in this folder and run: <code style="background:#fff8e1;padding:2px 5px;border-radius:3px">python -m http.server 8080</code>
+        then go to <code style="background:#fff8e1;padding:2px 5px;border-radius:3px">http://localhost:8080</code><br><br>
+        Then add the localhost URL as a redirect URI in your Azure App Registration.`;
+    }
+    return;
+  }
+
+  showOverlay('Checking session…');
+  // 15-second timeout safety net
+  const safetyTimer = setTimeout(() => {
+    showLoginScreen('Sign-in timed out. Please try again.');
+  }, 15000);
+
+  try {
+    const restored = await tryRestoreSession();
+    clearTimeout(safetyTimer);
+    if (!restored) showLoginScreen();
+  } catch(e) {
+    clearTimeout(safetyTimer);
+    showLoginScreen(e.message?.includes('FILE') ? '' : 'Session check failed: ' + e.message);
+    console.error('Session restore error:', e);
+  }
+});
+</script>
+</body>
+</html>
