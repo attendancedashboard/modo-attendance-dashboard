@@ -404,6 +404,7 @@ const CONFIG={
 const SCOPES=['User.Read','Files.ReadWrite.All','Sites.ReadWrite.All'];
 const PTO_SHEET='PTO_Applications';
 const PTO_HDRS=['UniqueKey','Email','FullName','LineManager','Cluster','RequestedOn','StartDate','EndDate','TotalDays','PTOType','Reason','Status','ReviewedBy','ReviewedOn','Comments'];
+const CI_HDRS=['UniqueKey','Email','FullName','Date','CheckInTime','CheckOutTime','ShiftStart','ShiftEnd','ScheduleStatus','AttendanceStatus','LateMinutes','IsAutoCheckout','LineManager','Cluster','Notes','SubmittedBy'];
 
 let msalInst=null,currentUser=null,schedData=[],ciData=[],ptoData=[],dateCols=[],driveId=null,fileId=null;
 let allRows=[]; // computed attendance rows
@@ -457,12 +458,128 @@ async function readSheet(name){
   }catch(e){if(e.message.includes('404')||e.message.includes('ItemNotFound'))return{headers:[],rows:[]};throw e;}
 }
 async function patchCell(sheet,row,c,val){await ensureIds();const cl=colLtr(c);await api(wb('/worksheets/'+encodeURIComponent(sheet)+'/range(address=\''+cl+row+':'+cl+row+'\')'),'PATCH',{values:[[val]]});}
+async function appendRow(sheet,hdrs,vals){
+  await ensureIds();
+  const used=await api(wb('/worksheets/'+encodeURIComponent(sheet)+'/usedRange(valuesOnly=true)'));
+  const next=(used.values?used.values.length:1)+1;
+  const endCol=colLtr(hdrs.length);
+  await api(wb('/worksheets/'+encodeURIComponent(sheet)+'/range(address=\'A'+next+':'+endCol+next+'\')'),'PATCH',{values:[vals]});
+}
 function colLtr(n){let s='';while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}
 
 function showPage(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+n).classList.add('active');}
 function loading(msg){document.getElementById('loading-msg').textContent=msg;showPage('loading');}
 function toast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(type||'');setTimeout(()=>t.classList.remove('show'),3500);}
-function todayStr(){const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');}
+
+// ── Manila time helpers ──────────────────────────────────────────────────────
+function nowMNL(){const now=new Date();return new Date(now.getTime()+(8*60+now.getTimezoneOffset())*60*1000);}
+function todayStr(){const n=nowMNL();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');}
+function fmtTimeMNL(d){const h=d.getHours(),m=d.getMinutes();const ap=h>=12?'PM':'AM';const h12=h===0?12:h>12?h-12:h;return h12+':'+String(m).padStart(2,'0')+' '+ap;}
+// Shift minutes from midnight — handles overnight (adds 24*60 for next-day end)
+function shiftMins(timeStr){const[h,m]=timeStr.split(':').map(Number);return h*60+m;}
+function elapsedMins(startStr,mnl){
+  let cur=mnl.getHours()*60+mnl.getMinutes();
+  let ss=shiftMins(startStr);
+  // Evening shift (starts 18:00+) and current time is early morning → next day
+  if(ss>=18*60&&cur<12*60)cur+=24*60;
+  return cur-ss;
+}
+function minsUntilCheckout(endStr,startStr,mnl){
+  let cur=mnl.getHours()*60+mnl.getMinutes();
+  let se=shiftMins(endStr);
+  let ss=shiftMins(startStr);
+  // Overnight: end hour < start hour → shift ends next day
+  if(se<ss){
+    if(cur<12*60)cur+=24*60; // current is early morning = next day
+    se+=24*60;
+  }
+  return cur-se; // positive = past shift end
+}
+
+// ── AUTO PROCESSING (runs on dashboard load + refresh) ──────────────────────
+async function runAutoProcessing(){
+  const mnl=nowMNL();
+  const today=todayStr();
+
+  // Find today's schedule column
+  const monthMap={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+  const todayCol=dateCols.find(c=>{
+    const[dn,mon]=c.label.split('-');
+    const d=new Date(mnl.getFullYear(),monthMap[mon]??4,parseInt(dn));
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')===today;
+  });
+  if(!todayCol)return; // Today not in the schedule columns
+
+  // Build today's CI map (email → record)
+  const ciToday={};
+  ciData.forEach(r=>{if(r.Date===today)ciToday[(r.Email||'').toLowerCase()]=r;});
+
+  let agents=schedData;
+  if(currentUser.role==='manager')agents=agents.filter(r=>r['Line Manager']===currentUser.managerName);
+
+  const absentToAdd=[];
+  for(const a of agents){
+    const shiftStr=a[todayCol.label]||'OFF';
+    if(!shiftStr||shiftStr==='OFF'||shiftStr==='PTO'||!shiftStr.includes(' - '))continue;
+    const email=(a.Email||'').toLowerCase();
+    if(ciToday[email])continue; // Already has a record today
+    const[ss]=shiftStr.split(' - ');
+    const elapsed=elapsedMins(ss,mnl);
+    if(elapsed>=6*60){ // 6 hours past shift start
+      absentToAdd.push({a,shiftStr});
+    }
+  }
+
+  const checkoutsToUpdate=[];
+  ciData.forEach((ci,idx)=>{
+    if(ci.Date!==today)return;
+    if(ci.CheckOutTime)return;
+    if((ci.AttendanceStatus||'').toLowerCase()==='absent')return;
+    if(!ci.CheckInTime||!ci.ShiftEnd||!ci.ShiftStart)return;
+    const overdue=minsUntilCheckout(ci.ShiftEnd,ci.ShiftStart,mnl);
+    if(overdue>=10){checkoutsToUpdate.push({ci,excelRow:idx+2});}
+  });
+
+  if(!absentToAdd.length&&!checkoutsToUpdate.length)return;
+
+  let processed=0;
+  // Write absent rows
+  for(const{a,shiftStr} of absentToAdd){
+    const email=(a.Email||'').toLowerCase();
+    const[ss,se]=shiftStr.split(' - ');
+    const obj={UniqueKey:email+'_'+today,Email:a.Email,FullName:a['Full Name']||a.Username,
+      Date:today,CheckInTime:'',CheckOutTime:'',ShiftStart:ss,ShiftEnd:se,
+      ScheduleStatus:'Scheduled',AttendanceStatus:'Absent',LateMinutes:0,IsAutoCheckout:false,
+      LineManager:a['Line Manager']||'',Cluster:a.Cluster||'',
+      Notes:'Auto-tagged by system',SubmittedBy:'system@modo-auto'};
+    const vals=CI_HDRS.map(h=>obj[h]??'');
+    try{
+      await appendRow('CheckIn_CheckOut',CI_HDRS,vals);
+      const newRow=Object.fromEntries(CI_HDRS.map((h,i)=>[h,vals[i]]));
+      ciData.push(newRow);
+      ciToday[email]=newRow;
+      processed++;
+    }catch(e){console.warn('Auto-absent failed for '+email+':',e);}
+  }
+
+  // Write auto-checkouts
+  const coCol=CI_HDRS.indexOf('CheckOutTime')+1;
+  const autoCol=CI_HDRS.indexOf('IsAutoCheckout')+1;
+  const coTime=fmtTimeMNL(mnl);
+  for(const{ci,excelRow} of checkoutsToUpdate){
+    try{
+      await patchCell('CheckIn_CheckOut',excelRow,coCol,coTime);
+      await patchCell('CheckIn_CheckOut',excelRow,autoCol,'TRUE');
+      ci.CheckOutTime=coTime;ci.IsAutoCheckout='TRUE';
+      processed++;
+    }catch(e){console.warn('Auto-checkout failed:',e);}
+  }
+
+  if(processed>0){
+    buildAllRows();renderAll();
+    toast('⚙️ Auto-processed '+processed+' record(s) (absent/checkout)','ok');
+  }
+}
 function normDate(v){
   if(!v&&v!==0)return'';
   if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');}
@@ -527,12 +644,14 @@ async function boot(){
     clusters.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;cluSel.appendChild(o);});
 
     buildAllRows();
-    // Default to TODAY so current date always shows at top
+    // Default to TODAY
     document.getElementById('f-date-from').value=todayStr();
     document.getElementById('f-date-to').value=todayStr();
     showPage('app');
     updateTimestamp();
     renderAll();
+    // Run auto-processing silently in background after UI loads
+    runAutoProcessing().catch(e=>console.warn('Auto-processing error:',e));
   }catch(e){showPage('login');toast('Error: '+e.message,'err');console.error(e);}
 }
 
@@ -1035,6 +1154,8 @@ async function refreshAll(){
     const pto=await readSheet(PTO_SHEET);
     ptoData=pto.rows.map(r=>({...r,StartDate:normDate(r.StartDate),EndDate:normDate(r.EndDate),RequestedOn:normDate(r.RequestedOn),ReviewedOn:normDate(r.ReviewedOn)}));
     buildAllRows();showPage('app');updateTimestamp();renderAll();
+    // Run auto-processing after fresh data loads
+    await runAutoProcessing();
     toast('Refreshed.','ok');
   }catch(e){showPage('app');toast('Refresh failed: '+e.message,'err');}
 }
