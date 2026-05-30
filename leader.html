@@ -527,6 +527,9 @@ async function boot(){
     clusters.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;cluSel.appendChild(o);});
 
     buildAllRows();
+    // Default to TODAY so current date always shows at top
+    document.getElementById('f-date-from').value=todayStr();
+    document.getElementById('f-date-to').value=todayStr();
     showPage('app');
     updateTimestamp();
     renderAll();
@@ -587,13 +590,21 @@ function buildAllRows(){
             checkoutStatus=ci.CheckOutTime?(ci.IsAutoCheckout==='TRUE'||ci.IsAutoCheckout===true?'Auto':'Manual'):'—';
           }
         } else {
-          status=isToday?'pending':'absent';
+          if(isToday){
+            // Today with no check-in → Not Yet In
+            status='pending';
+          } else {
+            // Past date with no check-in record in Excel → SKIP
+            // Only PA/auto-tagging creates absent records for past dates.
+            // Don't fabricate absents from missing data.
+            return;
+          }
         }
       }
-      // Exclude future scheduled rows from submissions view
-      if(!isFuture||shiftStr==='PTO'||shiftStr==='OFF'){
-        allRows.push({date:dateStr,dateLabel:col.label,fullName:a['Full Name']||a.Username,email,eid:a.EID,lineManager:a['Line Manager']||'',cluster:a.Cluster||'',shift:shiftStr,checkIn,checkOut,status,lateMin,checkoutStatus});
-      }
+      // Include row: skip future scheduled (non PTO/OFF), skip OFF entirely from allRows
+      if(status==='off') return; // OFF not needed in allRows — tracked in overview only via schedule
+      if(isFuture&&status==='scheduled') return;
+      allRows.push({date:dateStr,dateLabel:col.label,fullName:a['Full Name']||a.Username,email,eid:a.EID,lineManager:a['Line Manager']||'',cluster:a.Cluster||'',shift:shiftStr,checkIn,checkOut,status,lateMin,checkoutStatus});
     });
   });
   allRows.sort((a,b)=>b.date.localeCompare(a.date));
@@ -724,11 +735,33 @@ function clearFilters(){
 }
 
 function renderOverviewCards(rows){
-  // Use only scheduled rows (exclude OFF) for rate denominator
-  const scheduled=rows.filter(r=>r.status!=='off');
-  const total=scheduled.length;
-  const counts={present:0,late:0,absent:0,pto:0,off:0,pending:0};
+  // Compute counts from actual rows (allRows no longer includes OFF/phantom absents)
+  const counts={present:0,late:0,absent:0,pto:0,pending:0};
   rows.forEach(r=>{ if(counts[r.status]!==undefined) counts[r.status]++; });
+
+  // Compute Day Off from the schedule for the filtered date range
+  const dateFrom=document.getElementById('f-date-from').value;
+  const dateTo=document.getElementById('f-date-to').value;
+  const monthF=document.getElementById('f-month').value;
+  const managerF=document.getElementById('f-manager').value;
+  let offCount=0;
+  let agents=schedData;
+  if(currentUser.role==='manager') agents=agents.filter(r=>r['Line Manager']===currentUser.managerName);
+  else if(managerF) agents=agents.filter(r=>r['Line Manager']===managerF);
+  dateCols.forEach(col=>{
+    const[dn,mon]=col.label.split('-');
+    const mMap={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+    const d=new Date(new Date().getFullYear(),mMap[mon]??4,parseInt(dn));
+    const ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    // Apply same date filter
+    if(monthF&&ds.slice(0,7)!==monthF)return;
+    if(dateFrom&&ds<dateFrom)return;
+    if(dateTo&&ds>dateTo)return;
+    agents.forEach(a=>{if((a[col.label]||'OFF')==='OFF')offCount++;});
+  });
+
+  const total=rows.length; // scheduled agents in view (present+late+absent+pto+pending)
+  const grandTotal=total+offCount;
   const presented=counts.present+counts.late;
   const rate=total>0?Math.round((presented/total)*100):0;
   const pct=(n,d)=>d>0?Math.round(n/d*100)+'%':'0%';
@@ -738,8 +771,8 @@ function renderOverviewCards(rows){
     {key:'present',color:'green',icon:'🟢',num:counts.present,sub:'Present',sub2:'',numCls:'green',pct:pct(counts.present,total),pctCls:'green'},
     {key:'late',color:'orange',icon:'⏰',num:counts.late,sub:'Late',sub2:'',numCls:'orange',pct:pct(counts.late,total),pctCls:'orange'},
     {key:'absent',color:'red',icon:'❌',num:counts.absent,sub:'Absent',sub2:'',numCls:'red',pct:pct(counts.absent,total),pctCls:'red'},
-    {key:'pto',color:'purple',icon:'🌴',num:counts.pto,sub:'On PTO',sub2:'',numCls:'purple',pct:pct(counts.pto,rows.length),pctCls:'purple'},
-    {key:'off',color:'gray',icon:'😴',num:counts.off,sub:'Day Off',sub2:'',numCls:'gray',pct:pct(counts.off,rows.length),pctCls:'gray'},
+    {key:'pto',color:'purple',icon:'🌴',num:counts.pto,sub:'On PTO',sub2:'',numCls:'purple',pct:pct(counts.pto,grandTotal),pctCls:'purple'},
+    {key:'',color:'gray',icon:'😴',num:offCount,sub:'Day Off',sub2:'',numCls:'gray',pct:pct(offCount,grandTotal),pctCls:'gray'},
     {key:'pending',color:'teal',icon:'⌛',num:counts.pending,sub:'Not Yet In',sub2:'',numCls:'teal',pct:pct(counts.pending,total),pctCls:'teal'},
   ];
 
